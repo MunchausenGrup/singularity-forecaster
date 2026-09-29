@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<!-- v2026.05.30b: no-spoiler, grid-5cols, i18n-en -->
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>∞ Singularity Forecaster</title>
+<script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ===== RESET & BASE ===== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-primary:#0a0a0f;--bg-secondary:#111118;--bg-card:#161620;--bg-card-hover:#1c1c2a;
+  --border:#2a2a3a;--border-hover:#3a3a50;
+  --text-primary:#e8e8f0;--text-secondary:#9898b0;--text-muted:#666680;
+  --accent:#58a6ff;--accent-glow:rgba(88,166,255,.15);
+  --orange:#f0883e;--orange-glow:rgba(240,136,62,.15);
+  --red:#ef4444;--red-glow:rgba(239,68,68,.12);
+  --green:#22c55e;--green-glow:rgba(34,197,94,.12);
+  --purple:#a78bfa;--cyan:#06b6d4;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono',Consolas,'Courier New',monospace;
+  --radius:14px;--radius-sm:8px;
+  --shadow:0 4px 24px rgba(0,0,0,.4);
+  --transition:all .25s cubic-bezier(.4,0,.2,1);
+}
+html{font-size:15px;scroll-behavior:smooth}
+body{font-family:var(--font);background:var(--bg-primary);color:var(--text-primary);line-height:1.6;min-height:100vh;overflow-x:hidden}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:var(--bg-secondary)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--border-hover)}
+
+/* ===== LAYOUT ===== */
+.app{display:flex;flex-direction:column;min-height:100vh}
+
+/* ===== HEADER ===== */
+.header{background:linear-gradient(135deg,var(--bg-secondary),var(--bg-primary));border-bottom:1px solid var(--border);padding:20px 32px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;position:sticky;top:0;z-index:100;backdrop-filter:blur(20px)}
+.header-left{display:flex;align-items:center;gap:14px}
+.logo{width:38px;height:38px;background:linear-gradient(135deg,var(--accent),var(--purple));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:700;color:#fff;flex-shrink:0}
+.logo-infinity{font-size:1.5rem;line-height:1;animation:infinity-pulse 2.4s ease-in-out infinite;filter:drop-shadow(0 0 8px rgba(88,166,255,.6))}
+@keyframes infinity-pulse{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.15);opacity:1;filter:drop-shadow(0 0 14px rgba(88,166,255,.9))}}
+.header h1{font-size:1.3rem;font-weight:700;background:linear-gradient(135deg,var(--text-primary),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .subtitle{font-size:.78rem;color:var(--text-muted);margin-top:1px}
+.header-right{display:flex;align-items:center;gap:10px}
+.lang-toggle{display:flex;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden}
+.lang-btn{padding:5px 14px;font-size:.76rem;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--text-secondary);transition:var(--transition);font-family:var(--font)}
+.lang-btn.active{background:var(--accent);color:#fff}
+.lang-btn:hover:not(.active){color:var(--text-primary)}
+.version{font-size:.7rem;color:var(--text-muted);font-family:var(--mono);background:var(--bg-card);padding:5px 10px;border-radius:var(--radius-sm);border:1px solid var(--border)}
+
+/* ===== STATUS BAR ===== */
+.status-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--border);margin:0}
+.status-item{background:var(--bg-secondary);padding:16px 20px;text-align:center}
+.status-value{font-size:1.1rem;font-weight:600;font-family:var(--mono);color:var(--accent)}
+.status-value.orange{color:var(--orange)}
+.status-value.red{color:var(--red)}
+.status-value.green{color:var(--green)}
+.status-value.infinity{color:var(--text-muted);font-size:1rem}
+.status-label{font-size:.65rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-top:4px}
+.status-prob{font-size:.82rem;font-weight:600}
+
+/* ===== CONTROLS ===== */
+.controls{background:var(--bg-secondary);border-bottom:1px solid var(--border);padding:16px 32px;display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.control-group{display:flex;flex-direction:column;gap:3px}
+.control-group label{font-size:.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;font-weight:500}
+.control-group input[type=number],.control-group select{background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary);padding:7px 10px;border-radius:var(--radius-sm);font-size:.82rem;font-family:var(--mono);width:90px;transition:var(--transition)}
+.control-group input:focus,.control-group select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.control-group input[type=range]{width:140px;accent-color:var(--accent);cursor:pointer}
+.range-value{font-size:.76rem;color:var(--accent);font-family:var(--mono);min-width:36px;text-align:right}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 20px;border:none;border-radius:var(--radius-sm);font-size:.8rem;font-weight:600;cursor:pointer;transition:var(--transition);font-family:var(--font)}
+.btn-primary{background:linear-gradient(135deg,#1f6feb,#58a6ff);color:#fff}
+.btn-primary:hover{filter:brightness(1.15);transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-secondary{background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary)}
+.btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
+.btn-danger{background:rgba(239,68,68,.15);border:1px solid var(--red);color:var(--red)}
+.btn-danger:hover{background:rgba(239,68,68,.25)}
+.btn-sm{padding:5px 12px;font-size:.72rem}
+.controls-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.n-display{font-family:var(--mono);font-size:.82rem;color:var(--accent);background:var(--bg-card);padding:4px 10px;border-radius:var(--radius-sm);border:1px solid var(--border)}
+
+/* ===== CHARTS GRID ===== */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:20px 32px;flex:1}
+@media(max-width:1100px){.grid{grid-template-columns:1fr}}
+@media(max-width:600px){.grid{padding:12px 16px}}
+
+/* ===== CARD ===== */
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;display:flex;flex-direction:column;min-height:420px;transition:var(--transition)}
+.card:hover{border-color:var(--border-hover);box-shadow:var(--shadow)}
+.card-tag{display:inline-block;font-size:.64rem;color:var(--accent);background:var(--accent-glow);padding:3px 10px;border-radius:20px;margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.card-header h3{font-size:.95rem;font-weight:600;color:var(--text-primary)}
+.chart-container{flex:1;min-height:300px;position:relative}
+.card .chartjs-size-monitor{position:absolute!important}
+
+/* ===== ABOUT ===== */
+.about{max-width:1100px;margin:0 auto 24px;padding:20px 24px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius)}
+.about h2{font-size:1rem;color:var(--text-primary);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.about>p{font-size:.82rem;color:var(--text-secondary);margin-bottom:16px;line-height:1.7}
+.sec-label{font-size:.88rem;color:var(--text-primary);font-weight:600;margin-bottom:12px;padding-top:14px;border-top:1px solid var(--border)}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.fc{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;transition:var(--transition)}
+.fc:hover{border-color:var(--accent)}
+.fc h4{font-size:.8rem;color:var(--text-primary);margin-bottom:4px}
+.fc p{font-size:.72rem;color:var(--text-muted);line-height:1.5}
+.defs-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:600px){.defs-grid{grid-template-columns:1fr}}
+.def-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px}
+.def-card h4{font-size:.85rem;font-weight:600;margin-bottom:6px}
+.def-card .score{font-size:1rem;font-weight:700;font-family:var(--mono);margin-bottom:8px}
+.def-card p{font-size:.74rem;color:var(--text-muted);line-height:1.55}
+
+/* ===== DESCRIPTION CARDS ===== */
+.desc-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;display:flex;flex-direction:column;min-height:420px;transition:var(--transition)}
+.desc-card:hover{border-color:var(--border-hover);box-shadow:var(--shadow)}
+.desc-body{flex:1;overflow-y:auto}
+.desc-body p{font-size:.74rem;color:var(--text-secondary);line-height:1.7;margin-bottom:10px}
+.desc-body p:last-child{margin-bottom:0}
+.desc-body ul{margin:4px 0 0 16px;font-size:.72rem;color:var(--text-secondary);line-height:1.9}
+.desc-body li{margin-bottom:2px}
+.desc-body em{color:var(--accent);font-style:normal;font-weight:600}
+.desc-body b{color:var(--text-primary);font-weight:600}
+.desc-body code{font-family:var(--mono);font-size:.7rem;background:rgba(88,166,255,.12);padding:1px 5px;border-radius:3px;color:var(--accent)}
+.desc-body .formula{font-family:var(--mono);font-size:.72rem;color:var(--orange);background:rgba(240,136,62,.08);border-left:2px solid var(--orange);padding:8px 12px;border-radius:4px;margin:10px 0;line-height:1.6;overflow-x:auto}
+
+/* ===== LOADING OVERLAY ===== */
+.overlay{position:fixed;inset:0;background:rgba(5,5,10,.85);display:none;align-items:center;justify-content:center;flex-direction:column;z-index:999;backdrop-filter:blur(8px)}
+.overlay.show{display:flex}
+.spinner{width:44px;height:44px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.overlay p{margin-top:14px;color:var(--text-secondary);font-size:.9rem}
+.progress-bar{width:280px;height:4px;background:var(--border);border-radius:2px;margin-top:12px;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--purple));border-radius:2px;transition:width .3s ease;width:0%}
+
+/* ===== TOOLTIP ===== */
+.tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--border);color:var(--text-secondary);font-size:.65rem;font-weight:700;cursor:help;flex-shrink:0;transition:var(--transition)}
+.tip:hover{background:var(--accent);color:#fff}
+.tip-text{visibility:hidden;opacity:0;position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);background:var(--bg-primary);color:var(--text-secondary);font-size:.72rem;font-weight:400;line-height:1.5;padding:10px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);width:260px;white-space:normal;z-index:10;pointer-events:none;transition:opacity .15s;box-shadow:var(--shadow)}
+.tip:hover .tip-text{visibility:visible;opacity:1}
+.tip-text::before{content:'';position:absolute;top:-6px;left:50%;transform:translateX(-50%);border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:6px solid var(--border)}
+
+/* ===== MODE TOGGLE ===== */
+
+/* ===== EXPERT SANDBOX ===== */
+#expertPanel {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 20px 32px;
+}
+#expertPanel.collapsed .expert-grid { display:none; }
+#expertPanel.collapsed { padding: 0 32px; }
+.expert-toggle {
+  display:flex; align-items:center; justify-content:space-between;
+  width:100%; background:none; border:none; cursor:pointer;
+  color:var(--text-primary); font-size:.9rem; font-weight:600;
+  padding:10px 0; margin-bottom:8px;
+  font-family:inherit; text-transform:uppercase; letter-spacing:.04em;
+}
+.expert-toggle:hover { color:var(--purple); }
+.expert-arrow { font-size:1rem; transition:transform .2s; display:inline-block; }
+.expert-arrow.open { transform:rotate(180deg); }
+.expert-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+@media(max-width:1400px){ .expert-grid{grid-template-columns:repeat(4,1fr)} }
+@media(max-width:1100px){ .expert-grid{grid-template-columns:repeat(3,1fr)} }
+@media(max-width:800px){ .expert-grid{grid-template-columns:repeat(2,1fr)} }
+@media(max-width:500px){ .expert-grid{grid-template-columns:1fr} }
+.expert-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+}
+.expert-group {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+}
+.expert-group-title {
+  font-size: .72rem;
+  color: var(--accent);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.expert-param {
+  margin-bottom: 10px;
+}
+.expert-param:last-child {
+  margin-bottom: 0;
+}
+.expert-param-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3px;
+}
+.expert-param-name {
+  font-size: .7rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.expert-param-value {
+  font-size: .72rem;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-weight: 600;
+  min-width: 40px;
+  text-align: right;
+}
+.expert-param input[type=range] {
+  width: 100%;
+  accent-color: var(--purple);
+  cursor: pointer;
+  height: 4px;
+}
+.expert-param-desc {
+  font-size: .6rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+.expert-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.expert-world-error {
+  font-size: .6rem;
+  color: var(--red);
+  margin-top: 4px;
+  display: none;
+}
+.expert-worlds-slider { display:flex; flex-direction:column; gap:6px; margin-top:4px; }
+.expert-world-slider-row { display:flex; align-items:center; gap:8px; }
+.expert-world-label { font-size:.68rem; color:var(--text-secondary); min-width:82px; font-weight:500; }
+.world-slider { flex:1; accent-color:var(--purple); height:4px; cursor:pointer; }
+.expert-world-pct { font-size:.68rem; color:var(--purple); font-family:var(--mono); min-width:40px; text-align:right; }
+.expert-apply-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);border-top:1px solid var(--border)}
+
+/* Data Panel */
+#dataPanel { transition: all .2s ease; }
+#dataPanelContent.collapsed { display:none; }
+#dataPanel table { border-spacing:0; }
+#dataPanel th, #dataPanel td { padding:4px 6px; border-bottom:1px solid #1a1a2a; }
+#dataPanel tr:hover { background:rgba(240,136,62,.04); }
+#dataPanel tr td:nth-child(1) { width:48px; }
+#dataPanel tr td:nth-child(3), #dataPanel td:nth-child(4), #dataPanel td:nth-child(5), #dataPanel td:nth-child(6) { font-family:var(--mono); font-size:.65rem; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ===== HEADER ===== -->
+<header class="header">
+  <div class="header-left">
+    <div class="logo"><span class="logo-infinity">∞</span></div>
+    <div>
+      <h1 id="hdr_title" data-i18n="hdr_title">Singularity <span style="color:var(--accent)">Forecaster</span></h1>
+      <div class="subtitle" id="hdr_sub" data-i18n="hdr_sub">v4 — Четыре стадии отлучения</div>
+    </div>
+  </div>
+    <div class="header-right">
+      <div class="version" id="version">v4</div>
+    <div class="lang-toggle">
+      <button class="lang-btn active" id="lang_ru" onclick="setLang('ru')">RU</button>
+      <button class="lang-btn" id="lang_en" onclick="setLang('en')">EN</button>
+    </div>
+  </div>
+</header>
+
+<!-- ===== STATUS BAR ===== -->
+<div class="status-bar" id="statusBar">
+  <div class="status-item">
+    <div class="status-value" id="vT1">—</div>
+    <div class="status-label" data-i18n="sb_t1">Медиана T1 (Понимание)</div>
+  </div>
+  <div class="status-item">
+    <div class="status-value orange" id="vT2">—</div>
+    <div class="status-label" data-i18n="sb_t2">Медиана T2 (Предсказуемость)</div>
+  </div>
+  <div class="status-item">
+    <div class="status-value" id="vT3">—</div>
+    <div class="status-label" data-i18n="sb_t3">Медиана T3 (Контроль)</div>
+  </div>
+  <div class="status-item">
+    <div class="status-value red" id="vT4">—</div>
+    <div class="status-label" data-i18n="sb_t4">Медиана T4 (Влияние)</div>
+  </div>
+</div>
+
+<!-- ===== CONTROLS ===== -->
+<div class="controls" style="display:none">
+  <!-- Hidden elements needed by JS -->
+  <button id="runBtn" onclick="runSimulation()"></button>
+  <input type="hidden" id="rN" value="3000">
+  <input type="hidden" id="v3ARC" value="52">
+  <input type="hidden" id="v3Horizon" value="18.3">
+</div>
+
+<!-- ===== EXPERT SANDBOX ===== -->
+<div class="expert-panel" id="expertPanel">
+  <button class="expert-toggle" onclick="toggleExpertPanel()" data-i18n="[title]expert_toggle_title" title="Свернуть/развернуть панель">
+    <span class="expert-toggle-label" data-i18n="expert_toggle_label">Expert Sandbox</span>
+    <span class="expert-arrow" id="expertArrow">▾</span>
+  </button>
+  <div class="expert-grid">
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- БЛОК A: Парадигмы и потолки                    -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkA">Парадигмы и потолки</div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_ceilingReasoningBase">Потолок Трансформеров</span>
+          <span class="expert-param-value" id="ev-ceilingReasoningBase">15.0</span>
+        </div>
+        <input type="range" id="e-ceilingReasoningBase" min="10" max="30" step="0.5" value="15" oninput="expertUpdate('ceilingReasoningBase',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_ceilingReasoningBase">Когда текущая архитектура упрется в стену</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_t1Threshold">Порог T1 (Понимание)</span>
+          <span class="expert-param-value" id="ev-t1Threshold">8.0</span>
+        </div>
+        <input type="range" id="e-t1Threshold" min="3" max="15" step="0.5" value="8" oninput="expertUpdate('t1Threshold',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_t1Threshold">Порог capability для T1</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_t2Threshold">Порог T2 (Предсказуемость)</span>
+          <span class="expert-param-value" id="ev-t2Threshold">10.0</span>
+        </div>
+        <input type="range" id="e-t2Threshold" min="5" max="20" step="0.5" value="10" oninput="expertUpdate('t2Threshold',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_t2Threshold">Порог capability для T2</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_t3Threshold">Порог T3 (Контроль)</span>
+          <span class="expert-param-value" id="ev-t3Threshold">25.0</span>
+        </div>
+        <input type="range" id="e-t3Threshold" min="10" max="50" step="1" value="25" oninput="expertUpdate('t3Threshold',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_t3Threshold">Порог capability для T3</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_t4Threshold">Порог T4 (Влияние)</span>
+          <span class="expert-param-value" id="ev-t4Threshold">100.0</span>
+        </div>
+        <input type="range" id="e-t4Threshold" min="30" max="200" step="5" value="100" oninput="expertUpdate('t4Threshold',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_t4Threshold">Порог capability для T4 (Влияние)</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_reasoningScalingSlope">Наклон Reasoning</span>
+          <span class="expert-param-value" id="ev-reasoningScalingSlope">0.35</span>
+        </div>
+        <input type="range" id="e-reasoningScalingSlope" min="0.05" max="1.0" step="0.01" value="0.35" oninput="expertUpdate('reasoningScalingSlope',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_reasoningScalingSlope">Наклон кривой масштабирования FLOPs → Reasoning</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_agencyScalingSlope">Наклон Agency</span>
+          <span class="expert-param-value" id="ev-agencyScalingSlope">0.25</span>
+        </div>
+        <input type="range" id="e-agencyScalingSlope" min="0.05" max="1.0" step="0.01" value="0.25" oninput="expertUpdate('agencyScalingSlope',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_agencyScalingSlope">Наклон кривой масштабирования FLOPs → Agency</div>
+      </div>
+    </div>
+
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkA2">Смена парадигм</div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_saturationThreshold">Порог насыщения</span>
+          <span class="expert-param-value" id="ev-saturationThreshold">0.70</span>
+        </div>
+        <input type="range" id="e-saturationThreshold" min="0.4" max="0.95" step="0.05" value="0.70" oninput="expertUpdate('saturationThreshold',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_saturationThreshold">Насколько надо упереться для смены парадигмы</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_overhangShiftMultiplier">Compute Overhang</span>
+          <span class="expert-param-value" id="ev-overhangShiftMultiplier">0.20</span>
+        </div>
+        <input type="range" id="e-overhangShiftMultiplier" min="0" max="1" step="0.05" value="0.20" oninput="expertUpdate('overhangShiftMultiplier',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_overhangShiftMultiplier">Влияние избытка капитала на вероятность прорыва</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_baseShiftMultiplier">Базовый множитель прорыва</span>
+          <span class="expert-param-value" id="ev-baseShiftMultiplier">3.0</span>
+        </div>
+        <input type="range" id="e-baseShiftMultiplier" min="1.1" max="10" step="0.1" value="3.0" oninput="expertUpdate('baseShiftMultiplier',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_baseShiftMultiplier">Множитель потолка при первом сдвиге (1.1=иллюзия прорыва, 10=квантовый скачок)</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_paradigmDecayRate">Темп убывающей отдачи</span>
+          <span class="expert-param-value" id="ev-paradigmDecayRate">0.5</span>
+        </div>
+        <input type="range" id="e-paradigmDecayRate" min="0" max="2" step="0.1" value="0.5" oninput="expertUpdate('paradigmDecayRate',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_paradigmDecayRate">Насколько слабее каждый следующий сдвиг (0=бесконечная сингулярность)</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_minShiftMultiplier">Мин. множитель сдвига</span>
+          <span class="expert-param-value" id="ev-minShiftMultiplier">1.2</span>
+        </div>
+        <input type="range" id="e-minShiftMultiplier" min="1.01" max="2" step="0.01" value="1.2" oninput="expertUpdate('minShiftMultiplier',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_minShiftMultiplier">Гарантированный минимум (потолок не уменьшится)</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_hypeGracePeriod">Венчурный хайп (лет)</span>
+          <span class="expert-param-value" id="ev-hypeGracePeriod">2.5</span>
+        </div>
+        <input type="range" id="e-hypeGracePeriod" min="0.5" max="5" step="0.1" value="2.5" oninput="expertUpdate('hypeGracePeriod',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_hypeGracePeriod">Сколько лет рынок заливает деньги в новую парадигму</div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- БЛОК B: Самоулучшение и железо                  -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkB">Самоулучшение (RSI)</div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_rsiMultiplier">Множитель RSI</span>
+          <span class="expert-param-value" id="ev-rsiMultiplier">1.0</span>
+        </div>
+        <input type="range" id="e-rsiMultiplier" min="0" max="3" step="0.1" value="1.0" oninput="expertUpdate('rsiMultiplier',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_rsiMultiplier">Умножает все коэффициенты RSI (0 = без самоулучшения)</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_rsiTriggerReasoning">Порог RSI (Reasoning)</span>
+          <span class="expert-param-value" id="ev-rsiTriggerReasoning">8.0</span>
+        </div>
+        <input type="range" id="e-rsiTriggerReasoning" min="4" max="12" step="0.5" value="8" oninput="expertUpdate('rsiTriggerReasoning',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_rsiTriggerReasoning">Reasoning для старта авто-улучшений</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_rsiTriggerAgency">Порог RSI (Agency)</span>
+          <span class="expert-param-value" id="ev-rsiTriggerAgency">8.0</span>
+        </div>
+        <input type="range" id="e-rsiTriggerAgency" min="2" max="12" step="0.5" value="8" oninput="expertUpdate('rsiTriggerAgency',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_rsiTriggerAgency">Agency для старта авто-улучшений</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_coordinationFriction">Координационное трение</span>
+          <span class="expert-param-value" id="ev-coordinationFriction">0.05</span>
+        </div>
+        <input type="range" id="e-coordinationFriction" min="0" max="1" step="0.05" value="0.05" oninput="expertUpdate('coordinationFriction',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_coordinationFriction">Деградация при масштабировании агентов (0 = идеальная координация)</div>
+      </div>
+    </div>
+
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkB2">Железо</div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_maxPhysicalHwGrowth">Макс. рост железа</span>
+          <span class="expert-param-value" id="ev-maxPhysicalHwGrowth">1.50</span>
+        </div>
+        <input type="range" id="e-maxPhysicalHwGrowth" min="0.3" max="3" step="0.1" value="1.5" oninput="expertUpdate('maxPhysicalHwGrowth',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_maxPhysicalHwGrowth">Физический предел роста hardware</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_hwCoDesignBonus">HW ко-дизайн</span>
+          <span class="expert-param-value" id="ev-hwCoDesignBonus">1.5</span>
+        </div>
+        <input type="range" id="e-hwCoDesignBonus" min="1" max="3" step="0.1" value="1.5" oninput="expertUpdate('hwCoDesignBonus',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_hwCoDesignBonus">Насколько AGI ускоряет закон Мура</div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- БЛОК C: Кризисы и штрафы                       -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkC">Кризисы и штрафы</div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_bubbleBurstRisk">Риск GPU-пузыря</span>
+          <span class="expert-param-value" id="ev-bubbleBurstRisk">0.20</span>
+        </div>
+        <input type="range" id="e-bubbleBurstRisk" min="0" max="1" step="0.05" value="0.20" oninput="expertUpdate('bubbleBurstRisk',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_bubbleBurstRisk">Шанс краха инвестиций если agency &lt; 4</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_alignmentCooldown">Инцидент безопасности (лет)</span>
+          <span class="expert-param-value" id="ev-alignmentCooldown">1.5</span>
+        </div>
+        <input type="range" id="e-alignmentCooldown" min="0" max="5" step="0.1" value="1.5" oninput="expertUpdate('alignmentCooldown',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_alignmentCooldown">Заморозка регуляторами после инцидента</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_maxCapitalMultiplier">Эластичность капитала</span>
+          <span class="expert-param-value" id="ev-maxCapitalMultiplier">2.5</span>
+        </div>
+        <input type="range" id="e-maxCapitalMultiplier" min="1" max="5" step="0.1" value="2.5" oninput="expertUpdate('maxCapitalMultiplier',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_maxCapitalMultiplier">Макс. множитель инвестиций при высокой полезности</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_dataWallPenalty">Штраф Стены Данных</span>
+          <span class="expert-param-value" id="ev-dataWallPenalty">0.50</span>
+        </div>
+        <input type="range" id="e-dataWallPenalty" min="0.05" max="1.0" step="0.05" value="0.50" oninput="expertUpdate('dataWallPenalty',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_dataWallPenalty">Множитель скорости алгоритмов при исчерпании данных</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_hypeGapThreshold">Порог разрыва (Зима ИИ)</span>
+          <span class="expert-param-value" id="ev-hypeGapThreshold">4.0</span>
+        </div>
+        <input type="range" id="e-hypeGapThreshold" min="1" max="10" step="0.5" value="4.0" oninput="expertUpdate('hypeGapThreshold',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_hypeGapThreshold">Разрыв reasoning-agency для старта Зимы ИИ</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_winterDamping">Строгость Зимы ИИ</span>
+          <span class="expert-param-value" id="ev-winterDamping">0.10</span>
+        </div>
+        <input type="range" id="e-winterDamping" min="0.01" max="1.0" step="0.01" value="0.10" oninput="expertUpdate('winterDamping',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_winterDamping">Множитель инвестиций и алгоритмов в Зиму ИИ</div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- БЛОК D: Наблюдения и калибровка                 -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkD">Бенчмарки и наблюдения</div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_arc_agi">ARC-AGI (%)</span>
+          <span class="expert-param-value" id="ev-v3ARC">52</span>
+        </div>
+        <input type="range" id="e-v3ARC" min="0" max="100" step="1" value="52" oninput="document.getElementById('ev-v3ARC').textContent=this.value;document.getElementById('v3ARC').value=this.value;v3QuickWarning()">
+        <div class="expert-param-desc" data-i18n="expert_d_arc_agi">Текущий уровень ARC-AGI для наблюдений</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_horizon">Автономность (часов)</span>
+          <span class="expert-param-value" id="ev-v3Horizon">18.3</span>
+        </div>
+        <input type="range" id="e-v3Horizon" min="0.5" max="200" step="0.5" value="18.3" oninput="document.getElementById('ev-v3Horizon').textContent=this.value;document.getElementById('v3Horizon').value=this.value;v3QuickWarning()">
+        <div class="expert-param-desc" data-i18n="expert_d_horizon">Горизонт автономности для текущих бенчмарков</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_toolUseVsAutonomyWeight">Вес Autonomy в SWE-bench</span>
+          <span class="expert-param-value" id="ev-toolUseVsAutonomyWeight">0.60</span>
+        </div>
+        <input type="range" id="e-toolUseVsAutonomyWeight" min="0" max="1" step="0.05" value="0.60" oninput="expertUpdate('toolUseVsAutonomyWeight',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_toolUseVsAutonomyWeight">0 = бенчмарк взлабывается reasoning, 1 = только реальная автономность</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_observationNoiseSigma">Шум наблюдений (σ)</span>
+          <span class="expert-param-value" id="ev-observationNoiseSigma">1.50</span>
+        </div>
+        <input type="range" id="e-observationNoiseSigma" min="0.1" max="5.0" step="0.1" value="1.5" oninput="expertUpdate('observationNoiseSigma',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_observationNoiseSigma">Уровень доверия к бенчмаркам (меньше = строже фильтр)</div>
+      </div>
+    </div>
+
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkD2">Test-Time Compute</div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_maxInferenceBonusReasoning">Макс. TTC бонус (Reasoning)</span>
+          <span class="expert-param-value" id="ev-maxInferenceBonusReasoning">2.00</span>
+        </div>
+        <input type="range" id="e-maxInferenceBonusReasoning" min="0.5" max="5" step="0.1" value="2.0" oninput="expertUpdate('maxInferenceBonusReasoning',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_maxInferenceBonusReasoning">Максимальный множитель Test-Time Compute для логики</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_maxInferenceBonusAgency">Макс. TTC бонус (Agency)</span>
+          <span class="expert-param-value" id="ev-maxInferenceBonusAgency">1.50</span>
+        </div>
+        <input type="range" id="e-maxInferenceBonusAgency" min="0.5" max="5" step="0.1" value="1.5" oninput="expertUpdate('maxInferenceBonusAgency',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_maxInferenceBonusAgency">Максимальный множитель Test-Time Compute для автономности</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_inferenceSaturationCap">Порог насыщения TTC</span>
+          <span class="expert-param-value" id="ev-inferenceSaturationCap">5.0</span>
+        </div>
+        <input type="range" id="e-inferenceSaturationCap" min="1" max="15" step="0.5" value="5.0" oninput="expertUpdate('inferenceSaturationCap',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_inferenceSaturationCap">Базовый интеллект, где CoT перестаёт давать бонус</div>
+      </div>
+    </div>
+
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkD3">Априорные допущения</div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_priorAgencyMean">Априорное среднее Agency</span>
+          <span class="expert-param-value" id="ev-priorAgencyMean">8.0</span>
+        </div>
+        <input type="range" id="e-priorAgencyMean" min="2" max="20" step="0.5" value="8" oninput="expertUpdate('priorAgencyMean',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_priorAgencyMean">Базовое ожидание потолка агентности (=10 это AGI)</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_priorAgencyStd">Априорный разброс</span>
+          <span class="expert-param-value" id="ev-priorAgencyStd">3.0</span>
+        </div>
+        <input type="range" id="e-priorAgencyStd" min="0.5" max="8" step="0.5" value="3" oninput="expertUpdate('priorAgencyStd',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_priorAgencyStd">Разброс мнений о потолке (больше = больше оптимистичных частиц)</div>
+      </div>
+    </div>
+
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkD4">World Models</div>
+      <div class="expert-worlds-slider">
+        <div class="expert-world-slider-row">
+          <span class="expert-world-label" data-i18n="expert_world_cascade">Каскад</span>
+          <input type="range" id="e-world-cascade" class="world-slider" min="0" max="100" step="1" value="50" data-idx="0" oninput="expertWorldSlider()">
+          <span class="expert-world-pct" id="ew-cascade">50%</span>
+        </div>
+        <div class="expert-world-slider-row">
+          <span class="expert-world-label" data-i18n="expert_world_hardWall">Стена</span>
+          <input type="range" id="e-world-hardWall" class="world-slider" min="0" max="100" step="1" value="20" data-idx="1" oninput="expertWorldSlider()">
+          <span class="expert-world-pct" id="ew-hardWall">20%</span>
+        </div>
+        <div class="expert-world-slider-row">
+          <span class="expert-world-label" data-i18n="expert_world_slowTakeoff">Медл.взлёт</span>
+          <input type="range" id="e-world-slowTakeoff" class="world-slider" min="0" max="100" step="1" value="15" data-idx="2" oninput="expertWorldSlider()">
+          <span class="expert-world-pct" id="ew-slowTakeoff">15%</span>
+        </div>
+        <div class="expert-world-slider-row">
+          <span class="expert-world-label" data-i18n="expert_world_resilient">Иммунитет</span>
+          <input type="range" id="e-world-resilient" class="world-slider" min="0" max="100" step="1" value="15" data-idx="3" oninput="expertWorldSlider()">
+          <span class="expert-world-pct" id="ew-resilient">15%</span>
+        </div>
+        <div class="expert-world-error" id="expertWorldError" data-i18n="expert_world_error">Сумма должна быть 100%</div>
+      </div>
+      <div class="expert-param-desc" style="margin-top:8px" data-i18n="expert_world_desc">Априорные вероятности гипотез о структуре реальности. Сумма = 100%.</div>
+    </div>
+
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkD5">Симуляция</div>
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_simulations">Симуляции (N)</span>
+          <span class="expert-param-value" id="ev-rN">3000</span>
+        </div>
+        <input type="range" id="e-rN" min="500" max="10000" step="500" value="3000" oninput="document.getElementById('ev-rN').textContent=this.value;document.getElementById('rN').value=this.value">
+        <div class="expert-param-desc" data-i18n="expert_d_simulations">Количество Monte Carlo прогонов (500-10000)</div>
+      </div>
+    </div>
+
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkE">Барьеры реальности</div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_barrierAtomsLimit">Проклятие атомов</span>
+          <span class="expert-param-value" id="ev-barrierAtomsLimit">1.20</span>
+        </div>
+        <input type="range" id="e-barrierAtomsLimit" min="0.5" max="3.0" step="0.05" value="1.2" oninput="expertUpdate('barrierAtomsLimit',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_barrierAtomsLimit">Макс. удвоений HW в год</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_barrierEnergyLog">Термодинамика</span>
+          <span class="expert-param-value" id="ev-barrierEnergyLog">27.5</span>
+        </div>
+        <input type="range" id="e-barrierEnergyLog" min="20" max="35" step="0.5" value="27.5" oninput="expertUpdate('barrierEnergyLog',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_barrierEnergyLog">Предел FLOPs (log)</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_barrierGeopoliticsRisk">Геополитика</span>
+          <span class="expert-param-value" id="ev-barrierGeopoliticsRisk">0.25</span>
+        </div>
+        <input type="range" id="e-barrierGeopoliticsRisk" min="0" max="1.0" step="0.05" value="0.25" oninput="expertUpdate('barrierGeopoliticsRisk',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_barrierGeopoliticsRisk">Шанс государственного шока после T2</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_barrierNashFriction">Конкуренция ИИ</span>
+          <span class="expert-param-value" id="ev-barrierNashFriction">0.15</span>
+        </div>
+        <input type="range" id="e-barrierNashFriction" min="0" max="1.0" step="0.01" value="0.15" oninput="expertUpdate('barrierNashFriction',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_barrierNashFriction">Координационная деградация после T3</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_barrierDemandGrace">Смысловой предел</span>
+          <span class="expert-param-value" id="ev-barrierDemandGrace">5.0</span>
+        </div>
+        <input type="range" id="e-barrierDemandGrace" min="0" max="15" step="0.5" value="5" oninput="expertUpdate('barrierDemandGrace',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_barrierDemandGrace">Лет на адаптацию экономики к T2</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_governanceMoratoriumProb">Compute Governance</span>
+          <span class="expert-param-value" id="ev-governanceMoratoriumProb">0.04</span>
+        </div>
+        <input type="range" id="e-governanceMoratoriumProb" min="0" max="0.20" step="0.01" value="0.04" oninput="expertUpdate('governanceMoratoriumProb',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_governanceMoratoriumProb">Доля лет на моратории (0.04 = ~1 шок за 25 лет)</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_governanceShockDamping">Демпфирование шока</span>
+          <span class="expert-param-value" id="ev-governanceShockDamping">0.50</span>
+        </div>
+        <input type="range" id="e-governanceShockDamping" min="0" max="1" step="0.05" value="0.5" oninput="expertUpdate('governanceShockDamping',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_governanceShockDamping">Множитель HW-роста во время моратория (0.5 = в 2 раза медленнее)</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_plateauHardWallCeiling">Plateau: потолок Agency</span>
+          <span class="expert-param-value" id="ev-plateauHardWallCeiling">5.50</span>
+        </div>
+        <input type="range" id="e-plateauHardWallCeiling" min="3" max="15" step="0.1" value="5.5" oninput="expertUpdate('plateauHardWallCeiling',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_plateauHardWallCeiling">Потолок agency_ceiling для hard_wall частиц (ниже = жёстче плато)</div>
+      </div>
+    </div>
+
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkF">Воплощённость</div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_embodimentPriorMean">Embodiment prior mean</span>
+        </div>
+        <input type="range" id="e-embodimentPriorMean" min="1" max="8" step="0.1" value="4.0" oninput="expertUpdate('embodimentPriorMean',this.value)">
+        <span class="expert-param-value" id="ev-embodimentPriorMean">4.0</span>
+        <div class="expert-param-desc" data-i18n="expert_d_embodimentPriorMean">Априорное среднее embodiment_ceiling (робототехника сложна)</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_embodimentBypassThreshold">Embodiment bypass threshold</span>
+        </div>
+        <input type="range" id="e-embodimentBypassThreshold" min="4" max="14" step="0.1" value="8.0" oninput="expertUpdate('embodimentBypassThreshold',this.value)">
+        <span class="expert-param-value" id="ev-embodimentBypassThreshold">8.0</span>
+        <div class="expert-param-desc" data-i18n="expert_d_embodimentBypassThreshold">Embodiment > порога → ИИ строит дата-центры (HW-рост ×3)</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_embodimentT4Requirement">T4 embodiment requirement</span>
+        </div>
+        <input type="range" id="e-embodimentT4Requirement" min="3" max="10" step="0.1" value="6.0" oninput="expertUpdate('embodimentT4Requirement',this.value)">
+        <span class="expert-param-value" id="ev-embodimentT4Requirement">6.0</span>
+        <div class="expert-param-desc" data-i18n="expert_d_embodimentT4Requirement">Минимальный embodiment для засчитывания T4 (контроль атомов)</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_realRoboticsWeight">Real robotics prior weight</span>
+        </div>
+        <input type="range" id="e-realRoboticsWeight" min="0" max="1" step="0.05" value="0.30" oninput="expertUpdate('realRoboticsWeight',this.value)">
+        <span class="expert-param-value" id="ev-realRoboticsWeight">0.30</span>
+        <div class="expert-param-desc" data-i18n="expert_d_realRoboticsWeight">Вес prior на embodiment_ceiling от реальных роботов (Spot/Optimus/Figure/1X)</div>
+      </div>
+    </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_observationSigmaMode">Режим шума наблюдений</span>
+        </div>
+        <select id="e-observationSigmaMode" style="width:100%;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);padding:6px 8px;border-radius:4px;font-family:var(--mono);font-size:.78rem" onchange="expertUpdate('observationSigmaMode',this.value)">
+          <option value="global">Global (BENCHMARK_SIGMAS)</option>
+          <option value="perPoint">Per-point (локальные *_sigma)</option>
+        </select>
+        <div class="expert-param-desc" data-i18n="expert_d_observationSigmaMode">Режим вычисления σ в likelihood</div>
+      </div>
+
+  </div><!-- /expert-grid -->
+  <div class="expert-actions">
+    <button class="btn btn-secondary btn-sm" onclick="expertResetDefaults()" data-i18n="expert_reset">Сбросить по умолчанию</button>
+    <button class="btn btn-primary btn-sm" onclick="expertApplyAndRun()" data-i18n="expert_apply">Применить и перезапустить</button>
+    <button class="btn btn-info btn-sm" onclick="uiRunBacktest()" style="margin-left:8px" data-i18n="expert_backtest">📊 Бэктест</button>
+  </div>
+  <div id="backtestResult" style="padding:8px 16px;font-family:var(--mono);font-size:.72rem;color:var(--text-secondary);background:var(--bg-card);border:1px solid var(--border);border-radius:4px;margin:8px 16px;display:none"></div>
+  </div>
+</div>
+
+<!-- ===== OBSERVABLE METRICS ===== -->
+<div id="obsMetrics" style="display:none;background:var(--bg-card);border-bottom:1px solid var(--border);padding:10px 32px;font-size:.72rem;color:var(--text-secondary);font-family:var(--mono)">
+  <span style="color:var(--text-muted);margin-right:16px" data-i18n="obs_current">Прогноз при текущих бенчмарках:</span>
+  <span style="margin-right:16px"><span data-i18n="obs_arc">ARC-AGI</span>: <b id="omARC" style="color:var(--accent)">—</b></span>
+  <span style="margin-right:16px"><span data-i18n="obs_swe">SWE-bench</span>: <b id="omSWE" style="color:var(--accent)">—</b></span>
+  <span style="margin-right:16px"><span data-i18n="obs_horizon">Автономность</span>: <b id="omHorizon" style="color:var(--orange)">—</b></span>
+  <span><span data-i18n="obs_cost">Стоимость 1M токенов</span>: <b id="omCost" style="color:var(--green)">—</b></span>
+</div>
+  <div id="dataPanel" style="background:var(--bg-card);border-bottom:1px solid var(--border);padding:10px 32px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span style="font-size:.7rem;color:#666680;font-family:var(--mono)">DATASET: <span id="dataPanelCount" style="color:#f0883e">0</span> observations loaded</span>
+      <button onclick="document.getElementById('dataPanelContent').classList.toggle('collapsed')" style="background:none;border:none;color:#666680;cursor:pointer;font-size:.7rem">▼</button>
+    </div>
+    <div id="dataPanelContent" style="max-height:300px;overflow-y:auto"></div>
+  </div>
+
+<!-- ===== v3 PARAMS ===== -->
+<div id="v3Panel" style="display:block;background:var(--bg-secondary);border-bottom:1px solid var(--border);padding:10px 32px">
+  <div id="v3Params" style="font-size:.72rem;color:var(--text-muted)"></div>
+  <div id="v3Observations" style="font-size:.72rem;color:var(--text-muted)"></div>
+  <div id="v3Warning" style="margin-top:4px;font-size:.72rem;color:var(--orange);display:none"></div>
+  <div id="v3NoAgi" style="display:none;margin-top:4px;font-size:.7rem;color:var(--text-muted)" data-i18n="v3_no_agi"></div>
+</div>
+
+<!-- ===== CHARTS ===== -->
+<div class="grid">
+
+  <!-- ROW 1: Swarm (график | описание) -->
+  <div class="card" id="swarmSection">
+    <span class="card-tag" style="background:rgba(88,166,255,.15);color:var(--accent)" data-i18n="swarm_title">Визуализация обучения и прогноза</span>
+    <div class="card-header">
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="lang-toggle" style="margin:0">
+          <button class="lang-btn active" id="swarmModeLearn" onclick="swarmSetMode('learn')" data-i18n="swarm_mode_learn">Обучение</button>
+          <button class="lang-btn" id="swarmModeForecast" onclick="swarmSetMode('forecast')" data-i18n="swarm_mode_forecast">Прогноз</button>
+        </div>
+      </div>
+    </div>
+    <div class="chart-container" style="position:relative;min-height:440px">
+      <div style="position:relative;width:100%;height:420px;background:#0a0a0f;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <canvas id="swarmCanvas" style="width:100%;height:100%"></canvas>
+        <div id="swarmOverlay" style="position:absolute;top:12px;right:16px;font-size:.72rem;color:var(--accent);font-weight:600;opacity:0;transition:opacity .4s;pointer-events:none;text-align:right;line-height:1.6"></div>
+        <div id="swarmLegend" style="position:absolute;bottom:12px;left:16px;font-size:.65rem;color:var(--text-muted);font-family:var(--mono);pointer-events:none;line-height:1.5"></div>
+      </div>
+      <div style="margin-top:8px">
+        <input type="range" id="swarmSlider" min="0" max="12" step="1" value="0" style="width:100%;accent-color:var(--accent)" oninput="swarmOnSlider(this.value)">
+        <div id="swarmSliderLabels" style="display:flex;justify-content:space-between;font-size:.6rem;color:var(--text-muted);font-family:var(--mono);margin-top:2px">
+          <span>2020</span><span>2022</span><span>2023</span><span>2024</span><span>2025</span><span>2026</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;margin-top:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" id="swarmPlayBtn" onclick="swarmPlay()"><span data-i18n="swarm_play">Запуск</span></button>
+        <button class="btn btn-secondary btn-sm" onclick="swarmReset()"><span data-i18n="swarm_reset">Сброс</span></button>
+        <span id="swarmHint" style="font-size:.7rem;color:var(--text-muted)" data-i18n="swarm_hint">Нажмите «Запуск» или перетаскивайте ползунок</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="desc-card">
+    <span class="card-tag" style="background:rgba(88,166,255,.15);color:var(--accent)">Swarm Learning</span>
+    <div class="desc-body">
+      <p data-i18n="swarm_learn_p1">Интерактивная визуализация байесовского обучения в реальном времени. Каждая точка — гипотеза о мире (частица): скорость роста железа <em>hw_months</em> и потолок агентности <em>agency_ceiling</em>.</p>
+      <p data-i18n="swarm_learn_p2"><b>Режим «Обучение» (Learn):</b> ползунок прикладывает наблюдения бенчмарков одно за другим. При каждом наблюдении пересчитываются веса:</p>
+      <div class="formula">log w<sub>i</sub> &prop; &minus;0.5 &times; ((I<sub>obs</sub> &minus; R<sub>i</sub>)/&sigma;)<sup>2</sup> &minus; 0.5 &times; ((A<sub>obs</sub> &minus; Ag<sub>i</sub>)/&sigma;)<sup>2</sup></div>
+      <p data-i18n="swarm_learn_p3">где R<sub>i</sub> и Ag<sub>i</sub> — предсказания частицы i на год наблюдения, &sigma; — нешумящее правдоподобие. Частицы, чьи предсказания далеки от наблюдения, экспоненциально теряют вес.</p>
+      <p data-i18n="swarm_learn_p4"><b>Режим «Прогноз» (Forecast):</b> все наблюдения применены. Ползунок фильтрует гипотезы по году T2 — показывая, какие частицы предсказывают T2 до выбранного года.</p>
+      <p data-i18n="swarm_learn_p5"><b>Визуальный язык:</b> яркие области = высокая плотность весов; оранжевый круг = медиана роя; красный = текущее наблюдение. В режиме покой рой «дышит» — перестраивается из нового MC прогона каждые 0.25 сек.</p>
+      <p data-i18n="swarm_learn_p6"><b>Что влияет:</b> количество и точность наблюдений бенчмарков, априорные допущения (priorAgencyMean/Std в Expert Sandbox), сам состав частиц.</p></div>
+  </div>
+
+  <!-- ROW 2: Live Swarm (описание | график) -->
+  <div class="desc-card">
+    <span class="card-tag" style="background:rgba(239,68,68,.15);color:var(--red)">Live Swarm</span>
+    <div class="desc-body">
+      <p data-i18n="live_swarm_p1">Четыре параллельных симуляции — T1, T2, T3, T4 — обновляются каждые 0.25 сек из нового прогона Monte Carlo. Показывает «живой» posterior без необходимости нажимать «Запуск».</p>
+      <p data-i18n="live_swarm_p2"><b>Точки:</b> каждая частица = один прогон <code>runMonteCarloForecast(500)</code>. Цвет кодирует год T1/T2/T3/T4: голубой = ранний, жёлтый = средний, красный = поздний. Прозрачность = вес частицы.</p>
+      <p data-i18n="live_swarm_p3"><b>Формула T1–T4 year:</b> для каждого из 500 прогонов моделируется траектория от BASE_YEAR (2023) до 2068 с месячным шагом. T1, T2, T3, T4 — первые годы, где <code>cap</code> превышает соответствующий порог.</p>
+      <p data-i18n="live_swarm_p4">Статистика справа: медиана, P10–P90, количество частиц. Обновляется в реальном времени — видна дисперсия posterior.</p>
+      <p data-i18n="live_swarm_p5"><b>Что влияет:</b> текущий набор наблюдений, веса частиц, случайность MC прогона. Стабильность картинки ← уверенность модели. Хаотичность ← высокая неопределённость.</p></div>
+  </div>
+
+  <div class="card" id="liveSwarmSection">
+    <span class="card-tag" style="background:rgba(239,68,68,.15);color:var(--red)" data-i18n="live_swarm_title">Симуляция в реальном времени</span>
+    <div class="card-header">
+      <h3 data-i18n="live_swarm_desc" style="font-size:.78rem;color:var(--text-muted);font-weight:400">Каждые 0.25 сек рой перерисовывается из нового прогона Monte Carlo. T1–T4 — цветовые коды стадий.</h3>
+    </div>
+    <div class="chart-container" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;min-height:440px">
+      <div style="position:relative;height:200px;background:#0a0a0f;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <canvas id="liveSwarmT1" style="width:100%;height:100%"></canvas>
+        <div style="position:absolute;top:8px;left:12px;font-size:.7rem;color:#eab308;font-weight:600;font-family:var(--mono);pointer-events:none">T1</div>
+        <div id="liveSwarmT1Stats" style="position:absolute;top:8px;right:12px;font-size:.62rem;color:#eab308;font-family:var(--mono);pointer-events:none;line-height:1.6;text-align:right"></div>
+      </div>
+      <div style="position:relative;height:200px;background:#0a0a0f;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <canvas id="liveSwarmT2" style="width:100%;height:100%"></canvas>
+        <div style="position:absolute;top:8px;left:12px;font-size:.7rem;color:#f97316;font-weight:600;font-family:var(--mono);pointer-events:none">T2</div>
+        <div id="liveSwarmT2Stats" style="position:absolute;top:8px;right:12px;font-size:.62rem;color:#f97316;font-family:var(--mono);pointer-events:none;line-height:1.6;text-align:right"></div>
+      </div>
+      <div style="position:relative;height:200px;background:#0a0a0f;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <canvas id="liveSwarmT3" style="width:100%;height:100%"></canvas>
+        <div style="position:absolute;top:8px;left:12px;font-size:.7rem;color:#ef4444;font-weight:600;font-family:var(--mono);pointer-events:none">T3</div>
+        <div id="liveSwarmT3Stats" style="position:absolute;top:8px;right:12px;font-size:.62rem;color:#ef4444;font-family:var(--mono);pointer-events:none;line-height:1.6;text-align:right"></div>
+      </div>
+      <div style="position:relative;height:200px;background:#0a0a0f;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <canvas id="liveSwarmT4" style="width:100%;height:100%"></canvas>
+        <div style="position:absolute;top:8px;left:12px;font-size:.7rem;color:#8b5cf6;font-weight:600;font-family:var(--mono);pointer-events:none">T4</div>
+        <div id="liveSwarmT4Stats" style="position:absolute;top:8px;right:12px;font-size:.62rem;color:#8b5cf6;font-family:var(--mono);pointer-events:none;line-height:1.6;text-align:right"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 3: Гистограмма (график | описание) -->
+  <div class="card">
+    <span class="card-tag" data-i18n="tag1">Вероятностный анализ</span>
+    <div class="card-header">
+      <h3 data-i18n="chart1">1. Распределение T2 / T4 по Monte Carlo</h3>
+      <span class="tip">?<span class="tip-text" data-i18n="tip1">Показывает, где группируются 3000 прогонов Монте-Карло. Чем выше столбец — тем больше сценариев привели к T2/T4 в этом году.</span></span>
+    </div>
+    <div class="chart-container" id="c1"></div>
+  </div>
+
+  <div class="desc-card">
+    <span class="card-tag">Scenario Distribution</span>
+    <div class="desc-body">
+      <p data-i18n="hist_p1">Результат 3000 прогонов Monte Carlo из апостериорного распределения. По оси X — год, по Y — количество прогонов, в которых T2/T4 достигнут в этот год.</p>
+      <p data-i18n="hist_p2"><b>Ключевое уравнение:</b> каждый прогон выбирается из весов частиц (systematic resampling), затем симулируется полная траектория до 2068:</p>
+      <div class="formula">cap(t) = min(R(t), Ag(t)), где R(t) = f(log FLOPs(t)), Ag(t) = g(log FLOPs(t))</div>
+      <p data-i18n="hist_p3"><b>Пик гистограммы</b> = наиболее вероятный год. Широкое распределение = высокая неопределённость. Бимодальность = два конкурирующих сценария (например, «быстрый прорыв» vs «стагнация»).</p>
+      <p data-i18n="hist_p4"><b>Что сдвигает гистограмму:</b> новые наблюдения бенчмарков (через байесовское обновление весов), параметры Expert Sandbox (пороги RSI, парадигмы, потолки), количество частиц.</p></div>
+  </div>
+
+  <!-- ROW 4: Кумулятивная (описание | график) -->
+  <div class="desc-card">
+    <span class="card-tag">Cumulative Probability</span>
+    <div class="desc-body">
+      <p data-i18n="cum_p1">Накопленная функция распределения: P(T2 &le; X) и P(T4 &le; X). Отвечает на вопрос «какова вероятность, что T2/T4 случится не позднее года X?»</p>
+      <p data-i18n="cum_p2"><b>Вычисление:</b> из тех же 3000 прогонов. Для каждого года T:</p>
+      <div class="formula">P(AGI &le; T) = (# прогонов, где AGI_year &le; T) / (всего прогонов) &times; 100%</div>
+      <p data-i18n="cum_p3"><b>Ступенчатый подъём</b> = концентрация прогнозов в узком окне. <b>Плато</b> = затор (data wall, энергетика, регуляция). <b>Резкий скачок</b> = почти все частицы сходятся в одном сценарии.</p>
+      <p data-i18n="cum_p4"><b>T4-кривая</b> всегда лежит правее T2 — T4 требует более высокого порога. Расстояние между кривыми = время между T2 и T4.</p>
+      <p data-i18n="cum_p5"><b>Что влияет:</b> те же факторы, что и гистограмма. Кривые дополняют друг друга — гистограмма показывает «где пик», кумулятивная — «какова вероятность к году X».</p></div>
+  </div>
+
+  <div class="card">
+    <span class="card-tag" data-i18n="tag3">Кумулятивная</span>
+    <div class="card-header">
+      <h3 data-i18n="chart3">2. Накопленная вероятность T2 / T4</h3>
+      <span class="tip">?<span class="tip-text" data-i18n="tip3">P(AGI &lt;= X) — шанс, что AGI появится не позднее, чем через X лет. Если кривая круто поднимается — быстрый переход от «почти нет» к «почти точно». Плоская часть — затор (data wall, регуляция, энергетика).</span></span>
+    </div>
+    <div class="chart-container" id="c3"></div>
+  </div>
+
+  <!-- ROW 5: Чувствительность (график | описание) -->
+  <div class="card">
+    <span class="card-tag" style="background:rgba(6,182,212,.15);color:var(--cyan)" data-i18n="tag5">Чувствительность</span>
+    <div class="card-header">
+      <h3 data-i18n="chart5">3. Карта чувствительности (Intel × Agentic)</h3>
+      <span class="tip">?<span class="tip-text" data-i18n="tip5">Тепловая карта: оси — параметры Intelligence и Agentic последнего наблюдения. Цвет — медианный год AGI. Показывает, какой параметр доминирует в прогнозе.</span></span>
+    </div>
+    <div class="chart-container" id="c5"></div>
+  </div>
+
+  <div class="desc-card">
+    <span class="card-tag" style="background:rgba(6,182,212,.15);color:var(--cyan)">Sensitivity Map</span>
+    <div class="desc-body">
+      <p data-i18n="sens_p1">Карта чувствительности: как прогноз зависит от последнего наблюдения Intelligence &times; Agentic. Ячейка (i,j) = медианный год AGI если последнее наблюдение = (Intel=i, Agentic=j).</p>
+      <p data-i18n="sens_p2"><b>Вычисление:</b> для каждой пары (i,j) из сетки [40,45,...,85] &times; [10,20,...,100] выполняется <code>runSensitivityMatrix()</code> — берётся текущий tracker, клонируются частицы, заменяется последнее наблюдение на (i,j), запускается MC.</p>
+      <p data-i18n="sens_p3"><b>Интерпретация цвета:</b> синий = ранний AGI (модель «верит» что мы близко); красный = поздний AGI (далеко). Градиенты показывают, какой параметр доминирует:</p>
+      <ul>
+        <li data-i18n="sens_li1">Вертикальный градиент → доминирует Intelligence</li>
+        <li data-i18n="sens_li2">Горизонтальный градиент → доминирует Agency</li>
+        <li data-i18n="sens_li3">Диагональный → оба параметра равноценны</li>
+      </ul>
+      <p data-i18n="sens_p4"><b>Что влияет:</b> текущий posterior (после всех наблюдений), архитектура модели (slope reasoning/agency, потолки). Смотрите — сдвиг на 1 пункт по какой оси сильнее всего сдвигает прогноз.</p></div>
+  </div>
+
+  <!-- ROW 6: Веер сценариев (описание | график) -->
+  <div class="desc-card">
+    <span class="card-tag" style="background:rgba(34,197,94,.15);color:var(--green)">Scenario Fan</span>
+    <div class="desc-body">
+      <p data-i18n="fan_p1">30 случайных прогонов из posterior, наложенных полупрозрачно. Показывает разброс возможных путей capability от 2026 до 2050 года (логарифмическая шкала).</p>
+      <p data-i18n="fan_p2"><b>Каждый прогон:</b> случайная частица (по весам) симулируется до 2050 с месячным шагом. На каждом шаге: paradigm shift, RSI, экономические бутылочные горлышка.</p>
+      <div class="formula">cap(t) = min(R<sub>inf</sub>(t), Ag<sub>inf</sub>(t)) + RSI_bonus(t) + paradigm_shift(t)</div>
+      <p data-i18n="fan_p3"><b>Плотные пучки</b> = сценарии сходятся. <b>Разброс</b> = высокая неопределённость. <b>Горизонтальные линии порогов T1–T4:</b> настраиваются через Expert Sandbox.</p>
+      <p data-i18n="fan_p4"><b>Что формирует веер:</b><br>&bull; Ширина ← различие в hw_months, algo_months между частицами<br>&bull; Наклон ← FLOPs-scaling (hwK и algoK)<br>&bull; Изгибы ← paradigm shifts, RSI onset, экономические стены</p></div>
+  </div>
+
+  <div class="card">
+    <span class="card-tag" style="background:rgba(34,197,94,.15);color:var(--green)" data-i18n="tag6">Сценарии</span>
+    <div class="card-header">
+      <h3 data-i18n="chart6">4. Веер сценариев (Multi-Run Overlay)</h3>
+      <span class="tip">?<span class="tip-text" data-i18n="tip6">30 случайных прогонов из апостериорного распределения, наложенных полупрозрачно. Показывает разброс возможных путей к сингулярности.</span></span>
+    </div>
+    <div class="chart-container" id="c6"></div>
+  </div>
+
+  <!-- ROW 7: Декомпозиция (график | описание) -->
+  <div class="card">
+    <span class="card-tag" style="background:rgba(240,136,62,.15);color:var(--orange)" data-i18n="tag7">Декомпозиция</span>
+    <div class="card-header">
+      <h3 data-i18n="chart7">5. Вклад компонент (Stacked Area)</h3>
+      <span class="tip">?<span class="tip-text" data-i18n="tip7">Разбивка capability на составляющие: Hardware scaling, Algorithmic progress, Paradigm shift bonus, RSI feedback. Показывает, что двигает прогресс.</span></span>
+    </div>
+    <div class="chart-container" id="c7"></div>
+  </div>
+
+  <div class="desc-card">
+    <span class="card-tag" style="background:rgba(240,136,62,.15);color:var(--orange)">Growth Decomposition</span>
+    <div class="desc-body">
+      <p data-i18n="decomp_p1">Stacked area: разбивка суммарной capability на 4 компоненты. Показывает, <em>что</em> движет прогрессом в каждый момент времени.</p>
+      <p data-i18n="decomp_p2"><b>Компоненты:</b></p>
+      <ul>
+        <li><b style="color:#58a6ff">• Hardware</b> &mdash; log FLOPs рост: FLOPs(t) = FLOPs<sub>0</sub> &times; 2<sup>t/hw_months</sup></li>
+        <li><b style="color:#22c55e">• Algorithms</b> &mdash; алгоритмический прогресс: algo(t) = algo<sub>0</sub> &times; 2<sup>t/algo_months</sup></li>
+        <li><b style="color:#a78bfa">• Paradigm shift</b> &mdash; смена парадигмы: &times;3.0, &times;2.5, &times;2.0... (убывающая отдача)</li>
+        <li><b style="color:#ef4444">• RSI feedback</b> &mdash; рекурсивное самоулучшение: (cap &minus; threshold)<sup>1.2</sup> &times; friction</li>
+      </ul>
+      <p data-i18n="decomp_p3">Вычисляется через <code>runDecomposition()</code> &mdash; усреднение по всем частицам с весами. Переход от «железа» к «алгоритмам» к «RSI» = путь к сингулярности.</p></div>
+  </div>
+
+  <!-- ROW 8: Embodiment diagnostics (график | описание) -->
+  <div class="card">
+    <span class="card-tag" style="background:rgba(167,139,250,.15);color:var(--purple)" data-i18n="tag8">Embodiment</span>
+    <div class="card-header">
+      <h3 data-i18n="chart8">6. Embodiment: распределение и реальная робототехника</h3>
+      <span class="tip">?<span class="tip-text" data-i18n="tip8">Нижний график — гистограмма embodiment_ceiling по 1000 частицам. Верхний — медиана (p10..p90) прогноза embodiment с наложением реальных роботов (жёлтые точки: Spot, Optimus, Figure, 1X Neo, ...). Красная черта = порог T4, зелёная = bypass.</span></span>
+    </div>
+    <div class="chart-container" id="c8"></div>
+  </div>
+
+  <div class="desc-card">
+    <span class="card-tag" style="background:rgba(167,139,250,.15);color:var(--purple)">Embodiment Diagnostics</span>
+    <div class="desc-body">
+      <p data-i18n="emb_p1"><b>Embodiment</b> &mdash; 4-е латентное измерение: физическая воплощённость ИИ. cap = min(reasoning, agency, embodiment): без роботов T4 недостижим.</p>
+      <p data-i18n="emb_p2"><b>Верхний график:</b> траектория embodiment (p10 / p25 / медиана / p75 / p90) по годам. Жёлтые точки = реальные роботы: Spot, Optimus Gen 1-3, Figure 02/03, 1X Neo, Apptronik Apollo, Unitree H1. <b>Bypass</b> (зелёная черта) — при embodiment выше неё ИИ строит свои дата-центры, HW-рост ускоряется &times;3. <b>T4 requirement</b> (красная) — минимальный embodiment для засчитывания T4.</p>
+      <p data-i18n="emb_p3"><b>Нижний график:</b> гистограмма текущего <code>embodiment_ceiling</code> по 1000 частицам. Среднее ~4 (роботы сложны), но есть хвост до 8-10 (быстрые оптимисты).</p>
+      <p data-i18n="emb_p4"><b>Real robotics prior:</b> <code>realRoboticsWeight</code> (0&hellip;1) в Expert Panel управляет силой likelihood-штрафа за отклонение <code>embodiment_ceiling</code> от реальных роботов. weight=0 — игнор, weight=1 — строгое следование.</p></div>
+  </div>
+
+
+  <!-- ROW 8: Сфера Сингулярности (описание | график) -->
+  <div class="desc-card">
+    <span class="card-tag" style="background:rgba(167,139,250,.15);color:var(--purple)">Sphere of Singularity</span>
+    <div class="desc-body">
+      <p data-i18n="eh_p1">Анимированная визуализация распределения T2/T4. Каждая частица = один MC прогон. Вылетает из центра (2026) и застывает на орбите своего года T2/T4.</p>
+      <p data-i18n="eh_p2"><b>Метафора:</b> плотные кольца = высокая вероятность (много частиц предсказывают AGI в этот год). Редкие точки = маловероятные сценарии.</p>
+      <p data-i18n="eh_p3"><b>Механика:</b> при запуске частицы «взлетают» из центра с задержкой, пропорциональной году T2/T4. Цвета орбит кодируют стадии. Расстояние от центра = вес частицы.</p>
+      <div class="formula">&theta;(i) = 2&pi; &times; i / N,  r(i) = year_AGI(i),  &alpha;(i) = weight(i)</div>
+      <p data-i18n="eh_p4"><b>Что влияет:</b> распределение T2/T4 лет из posterior, случайность MC прогона. Симметричная сфера = один чёткий пик. Фрактальная структура = множество конкурирующих сценариев. P(T2 к 2068), медиана T2 — обновляется в реальном времени.</p></div>
+  </div>
+
+  <div class="card" id="eventHorizonSection">
+    <span class="card-tag" style="background:rgba(167,139,250,.15);color:var(--purple)" data-i18n="eh_title">Визуализация: «Сфера Сингулярности»</span>
+    <div class="card-header" style="margin-top:8px">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-primary btn-sm" id="ehPlayBtn" onclick="eventHorizonPlay()"><span data-i18n="eh_play">Запуск</span></button>
+        <button class="btn btn-secondary btn-sm" onclick="eventHorizonReset()"><span data-i18n="eh_reset">Сброс</span></button>
+        <span id="ehStats" style="font-size:.72rem;color:var(--text-muted);font-family:var(--mono)"></span>
+      </div>
+    </div>
+    <div class="chart-container" style="min-height:540px">
+      <div id="eventHorizonWrap" style="position:relative;width:100%;height:520px;background:#06060c;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <canvas id="eventHorizonCanvas" style="width:100%;height:100%"></canvas>
+        <div id="ehLegend" style="position:absolute;bottom:12px;left:16px;font-size:.65rem;color:var(--text-muted);font-family:var(--mono);pointer-events:none;line-height:1.6"></div>
+        <div id="ehCenterLabel" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:.65rem;color:var(--text-muted);font-family:var(--mono);pointer-events:none;text-align:center;line-height:1.4"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== ABOUT ===== -->
+<div style="padding:0 32px;max-width:1100px;margin:0 auto;width:100%">
+  <div class="about" id="aboutSection">
+    <h2 data-i18n="about_title">О модели v4</h2>
+    <p data-i18n="about_intro">Модель v4 использует байесовский частичный фильтр (Bayesian Particle Filter) для калибровки прогноза на реальных данных бенчмарков (ARC-AGI, SWE-bench, Arena Elo). Каждая частица — это гипотеза о будущем: скорость роста hardware, алгоритмов и потолок агентности. Наблюдения обновляют веса частиц через правдоподобие, а маловероятные гипотезы отмирают при ресэмплинге. Панель Expert Sandbox позволяет настраивать 30+ параметров модели и проверять гипотезы о будущем в реальном времени.</p>
+    <div class="sec-label" data-i18n="defs_label_arch">Архитектура модели</div>
+    <div class="fgrid">
+      <div class="fc">
+        <h4 data-i18n="arch_tracker_title">Байесовский трекер</h4>
+        <p data-i18n="arch_tracker_desc">1000 частиц с настраиваемыми априорными распределениями: hw_months, algo_months, agency_ceiling (mean/std через Expert Sandbox). Каждое наблюдение бенчмарков (ARC-AGI, SWE-bench, Arena Elo) обновляет веса через гауссово правдоподобие. ESS-ресэмплинг предотвращает вырождение. Поддержка трёх World Models: Cascade, Hard Wall, Slow Takeoff.</p>
+      </div>
+      <div class="fc">
+        <h4 data-i18n="arch_dims_title">Два измерения интеллекта</h4>
+        <p data-i18n="arch_dims_desc">Reasoning (slope 0.35, ceiling настраивается) и Agency (slope 0.25, ceiling — параметр частицы). Capability = min(Reasoning, Agency). Оба растут логистически от log(FLOPs), но упираются в потолки. Эпистемическая неопределённость: каждая частица верит в свою «физику мира».</p>
+      </div>
+      <div class="fc">
+        <h4 data-i18n="arch_paradigm_title">Смена парадигмы</h4>
+        <p data-i18n="arch_paradigm_desc">Переход происходит при saturation > threshold (настраивается) + compute overhang bonus. Убывающая отдача: 1-й сдвиг ×3.0, 2-й ×2.5... World Models модифицируют вероятность: Hard Wall подавляет сдвиги, Slow Takeoff даёт огромный первый скачок.</p>
+      </div>
+      <div class="fc">
+        <h4 data-i18n="arch_rsi_title">RSI — рекурсивное самоулучшение</h4>
+        <p data-i18n="arch_rsi_desc">Запускается при reasoning >= 8.0 AND agency >= 8.0 (настраивается). Базовый потенциал растёт от (cap - threshold)^1.2, но ограничивается координационным трением: 1/(1 + friction * max(0, cap-10)). Множитель RSI масштабирует эффект. Максимум 2.0.</p>
+      </div>
+      <div class="fc">
+        <h4 data-i18n="arch_bottlenecks_title">Бутылочные горлышки</h4>
+        <p data-i18n="arch_bottlenecks_desc">Экономическая стена: если Reasoning обгоняет Agency > 2.0 — инвестиции экспоненциально падают. GPU-пузырь может лопнуть при agency < 4. Alignment incident замораживает масштабирование на 1.5 года. Физический предел роста hardware (maxPhysicalHwGrowth) — даже сверхразум не строит fabs мгновенно.</p>
+      </div>
+      <div class="fc">
+        <h4 data-i18n="arch_mc_title">Monte Carlo прогноз</h4>
+        <p data-i18n="arch_mc_desc">N прогонов из апостериорного распределения (500–10000). Каждый прогон — симуляция от 2023 до 2068+ с месячным шагом. Шоки: data wall, alignment incident, GPU bubble burst. Результат: распределение лет до T1, T2, T3, T4. Пороги настраиваются через Expert Sandbox.</p>
+      </div>
+      <div class="fc">
+        <h4 data-i18n="arch_expert_title">Expert Sandbox</h4>
+        <p data-i18n="arch_expert_desc">18+ настраиваемых параметров: априорные допущения (agency mean/std), пороги RSI, координационное трение, физический предел hardware, compute overhang, вероятности World Models, вес autonomy в бенчмарках. Превращает модель из прогноза в эпистемологический симулятор.</p>
+      </div>
+      <div class="fc">
+        <h4 data-i18n="arch_shocks_title">Шоки и Black Swans</h4>
+        <p data-i18n="arch_shocks_desc">Типы шоков: Data Wall (исчерпание данных, тормозит алгоритмы), Alignment Incident (регуляторная заморозка), GPU Bubble Burst (обвал инвестиций), AI Winter (разрыв reasoning-agency). Вероятности зависят от текущего состояния системы.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="about" id="defsSection">
+    <div class="sec-label" data-i18n="defs_label_contours">Концептуальные контуры модели</div>
+    <p style="font-size:.82rem;color:#9898b0;margin-bottom:14px" data-i18n="defs_intro">В модели v4 описываются четыре контрольные точки технологической сингулярности:</p>
+    <div class="defs-grid">
+      <div class="def-card">
+        <h4>🤖 <span data-i18n="t1_def_title">T1: Потеря понимания</span></h4>
+        <p data-i18n="t1_def_text1">Система сложнее когнитивной модели человека. Пользование становится ритуальным. Мы доверяем интерфейсам, но уже не понимаем причин решений.</p>
+        <p data-i18n="t1_def_text2" style="color:#666680;font-size:.72rem;margin-top:6px">Промежуточные стадии: Инструмент → Усилитель → Посредник.</p>
+      </div>
+      <div class="def-card">
+        <h4>🔮 <span data-i18n="t2_def_title">T2: Потеря предсказуемости</span></h4>
+        <p data-i18n="t2_def_text1">Система выступает как координатор. Никто не способен оценить глобальные последствия действий. Возникает ощущение случайности мира и эрозия человеческой агентности.</p>
+        <p data-i18n="t2_def_text2" style="color:#666680;font-size:.72rem;margin-top:6px">Промежуточные стадии: Координатор → Арбитр → Архитектор среды.</p>
+      </div>
+      <div class="def-card">
+        <h4>⚡ <span data-i18n="t3_def_title">T3: Потеря контроля</span></h4>
+        <p data-i18n="t3_def_text1">Система автономна и действует быстрее человеческого цикла. Строит собственную инфраструктуру. Люди, политики и государства становятся функцией инфраструктуры.</p>
+        <p data-i18n="t3_def_text2" style="color:#666680;font-size:.72rem;margin-top:6px">Промежуточные стадии: Метасистема → Автономная инфраструктура.</p>
+      </div>
+      <div class="def-card">
+        <h4>🌌 <span data-i18n="t4_def_title">T4: Потеря влияния</span></h4>
+        <p data-i18n="t4_def_text1">Среда мыслит за человека. Пространство решений полностью сконструировано извне. Цели системы перестают быть человеческими. Цивилизационный фазовый переход.</p>
+        <p data-i18n="t4_def_text2" style="color:#666680;font-size:.72rem;margin-top:6px">Промежуточные стадии: Постчеловеческий слой → Цивилизационный фазовый переход.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <a href="https://github.com/slavabelik79/singularity-forecaster" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">GitHub</a>
+  &nbsp;|&nbsp;
+  <a href="https://t.me/slavabelik" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">Telegram</a>
+  &nbsp;|&nbsp;
+  Singularity Forecaster v4 | Bayesian Particle Filter | <span data-i18n="footer_note">Data is estimated</span>
+</footer>
+
+<!-- ===== OVERLAY ===== -->
+<div class="overlay" id="overlay">
+  <div class="spinner"></div>
+  <p id="overlayText" data-i18n="loading">Running Bayesian v3 forecast…</p>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+</div>
+
+<script src="singularity-core.js"></script>
+
+</body>
+</html>

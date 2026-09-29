@@ -1,0 +1,147 @@
+// Final verification suite — asserts the properties that actually matter,
+// not incidental ones. All engine functions live in the vm sandbox, so they
+// must be called via G.*
+const fs = require('fs'), vm = require('vm');
+const src = fs.readFileSync('D:/prod/singularity-forecaster/singularity-core.js', 'utf8');
+function stubEl() {
+  const e = { style: {}, dataset: {}, classList: { add() {}, remove() {}, toggle() {} },
+    children: [], innerHTML: '', textContent: '', value: '1', checked: false,
+    appendChild() {}, removeChild() {}, setAttribute() {}, getAttribute() { return null; },
+    addEventListener() {}, removeEventListener() {}, querySelector() { return null; },
+    querySelectorAll() { return []; }, getBoundingClientRect() { return { width: 800, height: 600, left: 0, top: 0 }; },
+    getContext() { return ctx2d; }, closest() { return null; }, focus() {}, click() {} };
+  return e;
+}
+const ctx2d = new Proxy({}, { get: (t, k) => k === 'canvas' ? { width: 800, height: 600 }
+  : k === 'measureText' ? () => ({ width: 50 }) : k === 'getImageData' ? () => ({ data: new Uint8ClampedArray(4) })
+  : (k === 'createLinearGradient' || k === 'createRadialGradient') ? () => ({ addColorStop() {} })
+  : typeof k === 'string' ? () => {} : undefined });
+const doc = { documentElement: { style: {} }, body: stubEl(), getElementById: () => stubEl(),
+  querySelector: () => stubEl(), querySelectorAll: () => [], createElement: () => stubEl(),
+  createElementNS: () => stubEl(), addEventListener() {} };
+const sb = { console, Math, Date, JSON, Object, Array, Number, String, Boolean, Error,
+  isFinite, isNaN, parseFloat, parseInt, setTimeout: (f, t) => setTimeout(f, Math.min(t || 0, 0)),
+  clearTimeout, Promise, Float64Array, Map, Set, Proxy, Symbol, TypeError, RangeError,
+  window: { _lang: 'ru', devicePixelRatio: 1, addEventListener() {} }, document: doc,
+  navigator: { userAgent: 'node', language: 'ru-RU' }, location: { href: 'https://x/', protocol: 'https:' },
+  localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+  requestAnimationFrame: f => setTimeout(f, 0),
+  Plotly: { newPlot() {}, react() {}, purge() {}, resize() {} },
+  getComputedStyle: () => ({ getPropertyValue: () => '' }) };
+sb.window.document = doc; sb.globalThis = sb; sb.self = sb;
+let loadErr = null;
+try { vm.runInContext(src, vm.createContext(sb), { filename: 'core.js' }); } catch (e) { loadErr = e; }
+if (loadErr) { console.log('LOAD FAILED:', loadErr.message); process.exit(1); }
+const G = sb.__SINGULARITY_CORE__;
+const P = (a, p) => { a = a.slice().sort((x, y) => x - y); return a.length ? a[Math.floor(p / 100 * (a.length - 1))] : NaN; };
+const fin = a => (a || []).filter(isFinite);
+const pct = (n, d) => (100 * n / d).toFixed(1) + '%';
+let fails = 0;
+const check = (name, ok, detail) => { console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${name}${detail ? '  ' + detail : ''}`); if (!ok) fails++; };
+const hist = G.FALLBACK_BENCHMARK_HISTORY, cfg = G.createConfig();
+
+console.log('=== 1. SEEDED PRNG ===');
+G.setSeed(12345); const a1 = [G.rnd(), G.rnd(), G.rnd(), G.rnd()];
+G.setSeed(12345); const a2 = [G.rnd(), G.rnd(), G.rnd(), G.rnd()];
+check('same seed reproduces stream', JSON.stringify(a1) === JSON.stringify(a2));
+G.setSeed(999); const b1 = [G.rnd(), G.rnd(), G.rnd(), G.rnd()];
+check('different seed diverges', JSON.stringify(a1) !== JSON.stringify(b1));
+check('outputs in [0,1)', a1.every(v => v >= 0 && v < 1));
+
+console.log('\n=== 2. LIKELIHOOD PATH DETERMINISTIC ===');
+G.setSeed(42);
+const part = { hw_months: 7.5, algo_months: 6, agency_ceiling: 8, embodiment_ceiling: 4, world_model: 'cascade', rsi_efficiency: 1 };
+for (const yr of [2025, 2026, 2026.74, 2030, 2040]) {
+  const p1 = G.simulateToYear(part, yr, cfg);
+  const p2 = G.simulateToYear(part, yr, cfg);
+  check(`simulateToYear(${yr}) stable across repeats`, p1.reasoning === p2.reasoning && p1.worldModeling === p2.worldModeling,
+    `R=${p1.reasoning.toFixed(3)} W=${p1.worldModeling.toFixed(3)}`);
+}
+
+console.log('\n=== 3. FORECAST PATH SEED-SENSITIVE & REPRODUCIBLE ===');
+G.setSeed(7); const tA = new G.BayesianTracker(300); for (const o of hist) tA.observeRealData(o.year, o); const mA = tA.runMonteCarloForecast(200);
+G.setSeed(7); const tB = new G.BayesianTracker(300); for (const o of hist) tB.observeRealData(o.year, o); const mB = tB.runMonteCarloForecast(200);
+check('same seed -> identical forecast', JSON.stringify(mA.t3Years) === JSON.stringify(mB.t3Years));
+G.setSeed(8); const tC = new G.BayesianTracker(300); for (const o of hist) tC.observeRealData(o.year, o); const mC = tC.runMonteCarloForecast(200);
+check('different seed -> different forecast', JSON.stringify(mA.t3Years) !== JSON.stringify(mC.t3Years));
+
+console.log('\n=== 4. T4 PHYSICAL GATE IS REACHABLE (the real bug fixed) ===');
+const dr6 = G.computeDependency(1.0, 6.0, cfg.EXPERT);
+check('DR > 0.9 at the T4 embodiment gate E=6', dr6 > 0.9, `DR=${dr6.toFixed(3)} (was 0.880, unreachable)`);
+check('DR < 0.9 below the gate E=4', G.computeDependency(1.0, 4.0, cfg.EXPERT) < 0.9, `DR=${G.computeDependency(1.0, 4.0, cfg.EXPERT).toFixed(3)}`);
+
+console.log('\n=== 5. T3 IS AN INFORMATIVE LEADING INDICATOR OF T4 ===');
+G.setSeed(2024);
+const T = new G.BayesianTracker(1000); for (const o of hist) T.observeRealData(o.year, o);
+const mc = T.runMonteCarloForecast(1000);
+const f1 = fin(mc.t1Years), f2 = fin(mc.t2Years), f3 = fin(mc.t3Years), f4 = fin(mc.t4Years);
+console.log(`  t1 median ${P(f1, 50).toFixed(2)}y   t2 median ${P(f2, 50).toFixed(2)}y   t3 median ${P(f3, 50).toFixed(2)}y   t4 median ${P(f4, 50).toFixed(2)}y`);
+const lead = P(f4, 50) - P(f3, 50);
+check('T3 leads T4 by a material margin', lead > 2, `lead time = ${lead.toFixed(1)}y (T3 is not redundant with T4)`);
+// T4 implies T3 is the correct causal ordering; T3-only must exist for at least one hypothesis.
+let t3onlyFound = false;
+for (const wm of ['hard_wall', 'resilient_civ']) {
+  G.setSeed(11); const t = new G.BayesianTracker(400);
+  t.particles.forEach(p => { p.world_model = wm; }); t.weights.fill(1 / 400);
+  for (const o of hist) t.observeRealData(o.year, o);
+  const m = t.runMonteCarloForecast(400);
+  const b = m.t3Years.filter((v, i) => isFinite(v) && isFinite(m.t4Years[i])).length;
+  const t3o = fin(m.t3Years).length - b;
+  console.log(`  ${wm}: T3=${fin(m.t3Years).length} T4=${fin(m.t4Years).length} T3-only=${t3o}`);
+  if (t3o > 0) t3onlyFound = true;
+}
+check('T3 and T4 diverge for at least one hypothesis', t3onlyFound, 'T3 is not a perfect proxy of T4');
+
+console.log('\n=== 6. T1/T2 ARE PAST (read as "already achieved") ===');
+const past1 = f1.filter(x => x <= 0).length, past2 = f2.filter(x => x <= 0).length;
+check('T1 median <= 0 (past)', P(f1, 50) <= 0, `${pct(past1, f1.length)} of hits are past`);
+check('T2 median <= 0 (past)', P(f2, 50) <= 0, `${pct(past2, f2.length)} of hits are past`);
+
+console.log('\n=== 7. WM CEILING BUG FIXED ===');
+const cR = cfg.DIMENSIONS.reasoning.ceiling, cW = cfg.DIMENSIONS.worldModeling.ceiling, big = 1e6;
+check('WM asymptotes to its own ceiling (not Reasoning\'s)', Math.abs(G.computeDim(big, cfg.DIMENSIONS.worldModeling.slope, cW) - cW) < 1e-6,
+  `R->${G.computeDim(big, cfg.DIMENSIONS.reasoning.slope, cR).toFixed(1)} W->${G.computeDim(big, cfg.DIMENSIONS.worldModeling.slope, cW).toFixed(1)}`);
+
+console.log('\n=== 8. LIKELIHOOD IS A PRODUCT (ESS falls monotonically with #benchmarks) ===');
+const med = T.particles[0];
+const mp = G.simulateToYear(med, 2025.0, cfg);
+const mo = G.getNumericObservables(mp.reasoning, mp.agency, mp.embodiment, cfg.EXPERT);
+const cases = [
+  ['1', { arcAgi: mo.arcAgi * 1.10 }],
+  ['3', { arcAgi: mo.arcAgi * 1.10, sweBench: mo.sweBench * 1.10, arenaElo: mo.arenaElo + 30 }],
+  ['5', { arcAgi: mo.arcAgi * 1.10, sweBench: mo.sweBench * 1.10, arenaElo: mo.arenaElo + 30, trainingFlopsLog: mo.flopsLog + 0.3, horizon: 4 }],
+];
+const essList = [];
+for (const [n, obs] of cases) {
+  G.setSeed(1); const t = new G.BayesianTracker(400);
+  t.observeRealData(2025.0, obs);
+  const ess = 1 / t.weights.reduce((a, b) => a + b * b, 0);
+  essList.push(ess);
+  console.log(`  ${n} benchmark(s) -> ESS ${ess.toFixed(1)}/400`);
+}
+check('more benchmarks => more concentrated posterior (ESS falls)', essList[2] < essList[0] && essList[2] < essList[1],
+  `product likelihood, not exp(mean)`);
+
+console.log('\n=== 9. DISCRIMINATION BETWEEN WORLD MODELS ===');
+const rows = [];
+for (const wm of ['cascade', 'hard_wall', 'slow_takeoff', 'resilient_civ']) {
+  G.setSeed(5); const t = new G.BayesianTracker(400);
+  t.particles.forEach(p => { p.world_model = wm; }); t.weights.fill(1 / 400);
+  for (const o of hist) t.observeRealData(o.year, o);
+  const m = t.runMonteCarloForecast(300);
+  const e = 1 / t.weights.reduce((a, b) => a + b * b, 0);
+  rows.push([wm, e, pct(fin(m.t3Years).length, 300), pct(fin(m.t4Years).length, 300)]);
+  console.log(`  ${wm.padEnd(14)} ESS=${e.toFixed(0).padStart(3)}  P(T3)=${rows.at(-1)[2].padStart(6)}  P(T4)=${rows.at(-1)[3].padStart(6)}`);
+}
+const t4rates = rows.map(r => parseFloat(r[3]));
+check('P(T4) differs across hypotheses', Math.max(...t4rates) - Math.min(...t4rates) > 20, 'filter discriminates');
+
+console.log('\n=== 10. ALL PUBLIC METHODS WORK ===');
+G.setSeed(3); const T2 = new G.BayesianTracker(600); for (const o of hist) T2.observeRealData(o.year, o);
+try { const s = T2.runScenarioOverlay(15); check('runScenarioOverlay', s.length === 15 && s[0].years.length > 0, `${s.length} scenarios`); } catch (e) { check('runScenarioOverlay', false, e.message); }
+try { const d = T2.runDecomposition(); const fin2 = d.hwComp.every(isFinite) && d.algoComp.every(isFinite) && d.rsiComp.every(isFinite) && d.paradigmComp.every(isFinite); check('runDecomposition', fin2 && d.years.length > 0, `${d.years.length} steps, all finite`); } catch (e) { check('runDecomposition', false, e.message); }
+try { const s = T2.getSummary(); check('getSummary', isFinite(s.agencyCeiling), `agencyCeiling=${s.agencyCeiling.toFixed(2)}`); } catch (e) { check('getSummary', false, e.message); }
+
+console.log('\n' + '='.repeat(60));
+console.log(fails === 0 ? 'ALL CHECKS PASSED' : `${fails} CHECK(S) FAILED`);
+process.exit(fails === 0 ? 0 : 1);

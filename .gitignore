@@ -1,0 +1,11 @@
+node_modules/
+__pycache__/
+.env
+*.log
+
+# Wrangler local state — contains the Cloudflare account_id, must never be committed
+.wrangler/
+
+# OS noise
+.DS_Store
+Thumbs.db

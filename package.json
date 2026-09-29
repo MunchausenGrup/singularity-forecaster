@@ -1,0 +1,15 @@
+{
+  "name": "singularity-forecaster",
+  "version": "2.1.0",
+  "description": "Singularity Forecaster — Monte Carlo AGI/ASI probability dashboard (Cloudflare Pages)",
+  "private": true,
+  "scripts": {
+    "dev": "npx wrangler pages dev",
+    "deploy": "npx wrangler pages deploy --project-name singularity-forecaster .",
+    "preview": "npx wrangler pages dev --local"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  },
+  "license": "MIT"
+}
