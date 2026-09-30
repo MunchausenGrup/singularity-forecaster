@@ -257,6 +257,19 @@ body{font-family:var(--font);background:var(--bg-primary);color:var(--text-prima
      scroll. */
   .chart-container[style*="grid-template-columns"]{grid-template-columns:1fr!important;min-height:0!important}
   .chart-container[style*="grid-template-columns"]>div{min-height:190px}
+
+  /* The swarm chart is the FIRST block under the sandbox, so on a phone its
+     height is the first thing a visitor sees after the controls — and if the
+     benchmark fetch is slow or blocked (it reads GitHub raw, and a mobile
+     network may fail it) the wrapper still paints its own background while the
+     canvas stays empty. A 400px empty panel right under the header reads as a
+     layout bug rather than a pending fetch, so phones get a shorter plot and
+     the surrounding chrome is tightened. */
+  .chart-container:has(#swarmCanvas),
+  .chart-container:has(> div > #swarmCanvas){min-height:220px!important}
+  .chart-container:has(#swarmCanvas) > div[style*="height"],
+  .chart-container:has(> div > #swarmCanvas) > div[style*="height"]{height:220px!important}
+  #swarmCanvas{height:220px!important}
 }
 
 @media(max-width:520px){
