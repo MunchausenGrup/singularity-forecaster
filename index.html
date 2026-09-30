@@ -152,8 +152,27 @@ body{font-family:var(--font);background:var(--bg-primary);color:var(--text-prima
   border-bottom: 1px solid var(--border);
   padding: 20px 32px;
 }
-#expertPanel.collapsed .expert-grid { display:none; }
+/* Collapsed is the default state. Both the grid AND the action bar must go:
+   .expert-actions is a sibling of .expert-grid, not a child, so hiding the
+   grid alone left a dangling row of buttons under an empty panel. */
+#expertPanel.collapsed .expert-grid,
+#expertPanel.collapsed .expert-actions { display:none; }
 #expertPanel.collapsed { padding: 0 32px; }
+/* Arrow is state-driven from CSS alone. Pointing down while collapsed reads as
+   "already open"; pointing up says "click to raise". The toggle no longer has
+   to track a .open class that could disagree with the panel's own state. */
+.expert-arrow { font-size:1rem; transition:transform .2s; display:inline-block; }
+#expertPanel.collapsed .expert-arrow { transform:rotate(180deg); }
+/* Compact preset controls live in the header while collapsed. Hidden when
+   expanded, because the full-width rows inside the panel take over there. */
+.expert-toggle-btns { display:none; gap:6px; align-items:center; margin-left:auto; margin-right:12px; flex-wrap:wrap; }
+#expertPanel.collapsed .expert-toggle-btns { display:flex; }
+.expert-toggle-btn {
+  font-family:inherit; font-size:.7rem; font-weight:600; letter-spacing:.02em;
+  padding:3px 9px; border-radius:var(--radius-sm); border:1px solid var(--border);
+  background:transparent; cursor:pointer; white-space:nowrap;
+}
+.expert-toggle-label { margin-right:auto; }
 .expert-toggle {
   display:flex; align-items:center; justify-content:space-between;
   width:100%; background:none; border:none; cursor:pointer;
@@ -162,8 +181,6 @@ body{font-family:var(--font);background:var(--bg-primary);color:var(--text-prima
   font-family:inherit; text-transform:uppercase; letter-spacing:.04em;
 }
 .expert-toggle:hover { color:var(--purple); }
-.expert-arrow { font-size:1rem; transition:transform .2s; display:inline-block; }
-.expert-arrow.open { transform:rotate(180deg); }
 .expert-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -323,9 +340,16 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
 </div>
 
 <!-- ===== EXPERT SANDBOX ===== -->
-<div class="expert-panel" id="expertPanel">
+<!-- Collapsed by default. The four headline medians are the product; a wall of
+     ~30 sliders above them buries the answer it is meant to inform. The
+     collapsed state keeps the presets and Apply/Reset reachable in the header
+     (see #expertToggleBtns) so folding does not cost the visitor a round trip.
+     Nothing is left reserving space: .expert-grid and .expert-actions both go
+     display:none, and the panel's vertical padding is zeroed. -->
+<div class="expert-panel collapsed" id="expertPanel">
   <button class="expert-toggle" onclick="toggleExpertPanel()" data-i18n="[title]expert_toggle_title" title="Свернуть/развернуть панель">
     <span class="expert-toggle-label" data-i18n="expert_toggle_label">Expert Sandbox</span>
+    <span class="expert-toggle-btns" id="expertToggleBtns"></span>
     <span class="expert-arrow" id="expertArrow">▾</span>
   </button>
   <div class="expert-grid">

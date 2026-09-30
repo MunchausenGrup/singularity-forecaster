@@ -379,11 +379,27 @@ function getNumericObservables(r10, a10, e10, expertCfg) {
 
 const DEFAULT_PARTICLES = 1000;
 
-function createConfig() {
+// Forecast origin — PINNED, deliberately not read from the wall clock.
+//
+// A fixed seed makes the RANDOM STREAM reproducible and says nothing about the
+// model INPUTS. With the origin taken from `new Date()`, the same seed produces
+// different numbers next month, which makes a published forecast impossible to
+// reproduce or cite: a reader who reruns it gets a different answer and no way
+// to tell whether the model changed or the calendar did. Advancing the forecast
+// is now an explicit, reviewable edit of this one constant.
+//
+// Set to 2026.75 (Q3 2026). The benchmark history runs to 2026.44, so this
+// extrapolates about a quarter beyond the last observation. Override only in
+// tests via createConfig({ currentYear }).
+const PINNED_CURRENT_YEAR = 2026.75;
+
+function createConfig(overrides = {}) {
   return {
     BASE_YEAR: 2023.0,          // Якорь (уровень GPT-4)
     BASE_LOG_FLOPS: 24.5,       // Начальные FLOPs в 2023
-    CURRENT_YEAR: (() => { const d = new Date(); return d.getFullYear() + (d.getMonth() + (d.getDate() - 1) / 31) / 12; })(), // Динамический текущий год
+    CURRENT_YEAR: (overrides && typeof overrides.currentYear === 'number')
+      ? overrides.currentYear
+      : PINNED_CURRENT_YEAR,
     THRESHOLDS: { t1: EXPERT_CONFIG.t1Threshold, t2: EXPERT_CONFIG.t2Threshold, t3: EXPERT_CONFIG.t3Threshold, t4: EXPERT_CONFIG.t4Threshold },
     DIMENSIONS: {
       reasoning: { slope: EXPERT_CONFIG.reasoningScalingSlope, ceiling: EXPERT_CONFIG.ceilingReasoningBase },
@@ -520,7 +536,15 @@ function stepDynamics(st, cfg, dt, stochastic, particle) {
   const socialTension = Math.max(0, DP - IL(st));
 
   st.IL += 0.5 * DP * (1.0 - st.IL) * dt;
-  st.II += 0.1 * A * (1.0 - st.II) * dt;
+  // II is a 0..1 share and is consumed as (1 - II) below, so exceeding 1 would
+  // flip its sign and invert what it is supposed to mean. Explicit Euler on
+  // dX/dt = k(1-X) overshoots only when k*dt >= 1; here k = 0.1*A and
+  // A <= agencyCeiling (~15), with dt = 1/12 everywhere, so k*dt is about 0.125
+  // — well inside the stable region and no overflow is reachable today. This
+  // clamp is therefore insurance rather than a repair: it makes the invariant
+  // explicit and holds it if the step or the ceiling ever changes. IL is
+  // already bounded because its k = 0.5*DP is at most 0.5.
+  st.II = Math.min(1.0, st.II + 0.1 * A * (1.0 - st.II) * dt);
   st.IC = Math.min(1.0, st.IC + 0.2 * st.IL * Math.max(0, (A - 4.0) / 10.0) * dt);
   if (p === 'resilient_civ') {
     st.IC = Math.min(st.IC, Math.max(0, 1.0 - st.II));
@@ -1380,7 +1404,11 @@ function addObservation() {
   const safeSwe = (sweVal !== undefined && isFinite(sweVal) && sweVal >= 0 && sweVal <= 100) ? sweVal : undefined;
   const safeElo = (eloVal !== undefined && isFinite(eloVal) && eloVal > 0) ? eloVal : undefined;
 
-  const y = coreTracker ? coreTracker.cfg.CURRENT_YEAR : (new Date().getFullYear() + new Date().getMonth() / 12);
+  // Fallback uses the pinned origin, not the wall clock: this function draws
+  // the "today" marker on the histogram, and letting it drift away from
+  // cfg.CURRENT_YEAR would put the marker at a different year than the
+  // forecast is actually anchored to.
+  const y = coreTracker ? coreTracker.cfg.CURRENT_YEAR : PINNED_CURRENT_YEAR;
   
   const newObs = { year: y };
   if (safeArc !== undefined) newObs.arcAgi = safeArc;
@@ -1588,7 +1616,10 @@ function buildHistogramBins(l1, l2, l3, l4) {
   fillHist(l1, h1); fillHist(l2, h2); fillHist(l3, h3); fillHist(l4, h4);
 
   const tracker = getTracker();
-  const CUR_Y = tracker ? tracker.cfg.CURRENT_YEAR : new Date().getFullYear();
+  // Same pinned origin as createConfig(); previously this fell back to the wall
+  // clock, which put the histogram's "today" line a different year from the one
+  // the forecast was anchored to whenever the tracker had not been built yet.
+  const CUR_Y = tracker ? tracker.cfg.CURRENT_YEAR : PINNED_CURRENT_YEAR;
   return { 
     labels: bins.slice(0, -1).map((_, i) => (CUR_Y + (bins[i] + bins[i + 1]) / 2).toFixed(1)), 
     t1: h1, t2: h2, t3: h3, t4: h4
@@ -3126,17 +3157,18 @@ function setLang(lang) {
 function toggleExpertPanel() {
   const panel = document.getElementById('expertPanel');
   if (!panel) return;
-  const arrow = document.getElementById('expertArrow');
 
+  // The arrow is driven purely by CSS (#expertPanel.collapsed .expert-arrow),
+  // so there is no .open class to keep in sync here. It used to be toggled in
+  // JS while the panel was collapsed from the start, which meant the glyph and
+  // the panel could disagree on first paint.
   if (panel.classList.contains('collapsed')) {
     panel.classList.remove('collapsed');
-    if (arrow) arrow.classList.add('open');
     requestAnimationFrame(() => {
       panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   } else {
     panel.classList.add('collapsed');
-    if (arrow) arrow.classList.remove('open');
   }
 }
 
