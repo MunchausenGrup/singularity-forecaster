@@ -236,7 +236,7 @@ body{font-family:var(--font);background:var(--bg-primary);color:var(--text-prima
   .expert-toggle-label{margin-right:auto}
   .expert-toggle-btns{margin-left:0;margin-right:0;width:100%;order:3}
   .expert-arrow{margin-left:auto}
-  .expert-toggle-btn{padding:6px 12px;font-size:.72rem}
+  .expert-toggle-btn{padding:8px 14px;font-size:.74rem;min-height:44px}
 
   /* Data table: 6 columns of numbers cannot fit a phone. Scroll it sideways
      inside its own container rather than letting the page scroll. */
@@ -271,16 +271,34 @@ body{font-family:var(--font);background:var(--bg-primary);color:var(--text-prima
   .grid{grid-template-columns:1fr}
   .defs-grid{grid-template-columns:1fr}
 
-  /* Touch targets: 8px/5px vertical padding yields buttons under the 44px
-     guidance for a comfortable tap. */
+  /* Tooltips are a fixed 260px wide and centred on their "?" trigger via
+     left:50%/translateX(-50%). Near either edge that pushes the box outside the
+     viewport and produces a horizontal scrollbar — measured: 6 of them at
+     260px each against a 577px scroll width. Constrain the width to the
+     viewport and keep them inside instead. */
+  .tip-text{width:auto;max-width:min(260px,calc(100vw - 32px))}
+  .tip-text{left:auto;right:0;transform:none}
+  .tip-text::before{left:auto;right:10px;transform:none}
+
+  /* Tab controls ("Обучение"/"Прогноз") and the RU/EN toggle sit at 38px; the
+     coarse-pointer block below does not apply to a desktop browser narrowed to
+     phone width, which is exactly what a QA check runs. Keyed off width so it
+     holds in that case too. */
   .btn{padding:11px 18px;font-size:.82rem;min-height:44px}
-  .btn-sm{padding:9px 14px;min-height:40px}
-  .lang-btn{padding:9px 16px;min-height:38px}
+  .btn-sm{padding:9px 14px}
+  .lang-btn{padding:9px 16px}
   .expert-toggle{min-height:48px}
   .expert-param input[type=range]{height:24px}
+  .lang-btn,.tab-btn,.btn-sm{min-height:44px}
 
   /* Long model names in the benchmark table must not stretch the layout. */
   #dataPanel td{overflow:hidden;text-overflow:ellipsis;max-width:150px}
+}
+
+/* Tooltips also need to survive a very narrow phone even after the width cap:
+   long unbroken Russian strings would otherwise still force the box wide. */
+@media(max-width:380px){
+  .tip-text{max-width:calc(100vw - 24px);font-size:.68rem}
 }
 
 /* Coarse pointers get the larger tap targets regardless of width — a tablet
