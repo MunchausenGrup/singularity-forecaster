@@ -76,11 +76,20 @@ const EXPERT_CONFIG = {
   alignmentCooldown: 1.5,          // Штраф за инцидент безопасности (лет)
   maxCapitalMultiplier: 2.5,       // Эластичность капитала
 
-  // --- ПОРОГИ ЭТАПОВ СИНГУЛЯРНОСТИ (Динамические настройки) ---
-  t1Threshold: 8.0,                // T1: Потеря понимания
-  t2Threshold: 10.0,               // T2: Потеря предсказуемости
-  t3Threshold: 25.0,               // T3: Потеря контроля
-  t4Threshold: 100.0,              // T4: Потеря влияния
+  // --- ПОРОГИ ЭТАПОВ СИНГУЛЯРНОСТИ ---
+  // Only t1 is a capability threshold, and it is the only stage that fires on
+  // one (R >= t1 && W >= 0.6*t1). T2/T3/T4 fire on sociotechnical state, not on
+  // capability. The previous t2Threshold/t3Threshold/t4Threshold (10/25/100)
+  // were collected into cfg.THRESHOLDS and exposed as expert sliders, but no
+  // trigger ever read them — the triggers were hardcoded (DP>0.5 && IL>0.3,
+  // IC>0.6, DR>0.9) — so moving those sliders changed nothing while the page
+  // reported a forecast. Replaced with the quantities actually compared, at the
+  // values that were previously hardcoded.
+  t1Threshold: 8.0,                // T1: потеря понимания (порог capability)
+  t2DemandThreshold: 0.5,          // T2: DP — спрос на координатора
+  t2LegitimacyThreshold: 0.3,      // T2: IL — институциональная принятость
+  t3CaptureThreshold: 0.6,         // T3: IC — доля захваченных институтов
+  t4DependencyThreshold: 0.9,      // T4: DR — цивилизационная зависимость
 
   // --- 5 СТЕН РЕАЛЬНОСТИ (Социотехнические барьеры) ---
   barrierAtomsLimit: 1.2,          // [Проклятие атомов] Макс. удвоений HW в год
@@ -99,7 +108,6 @@ const EXPERT_CONFIG = {
   drInstitutionalWeight: 0.55,    // вес институционального захвата (IC) в DR
   drPhysicalWeight: 0.45,         // вес физического контроля (E/10) в DR
   drInstitutionalSaturation: 0.95, // потолок IC, ниже 1.0 — даже полный захват оставляет хрупкость
-  t3ThresholdLegacy: null,        // (T3 теперь социотехнический, не capability-порог)
   // --- COMPUTE GOVERNANCE (пред-T2 моратории и регулирование) ---
   governanceMoratoriumProb: 0.04,  // [Compute Governance] Ожидаемая доля лет, потерянных на регуляторные паузы (0.04 = ~1 мораторий за 25 лет)
   governanceShockDamping: 0.5,     // [Compute Governance] Множитель HW-роста во время шока (0.5 = рост в 2 раза медленнее)
@@ -412,7 +420,11 @@ function createConfig(overrides = {}) {
     CURRENT_YEAR: (overrides && typeof overrides.currentYear === 'number')
       ? overrides.currentYear
       : PINNED_CURRENT_YEAR,
-    THRESHOLDS: { t1: EXPERT_CONFIG.t1Threshold, t2: EXPERT_CONFIG.t2Threshold, t3: EXPERT_CONFIG.t3Threshold, t4: EXPERT_CONFIG.t4Threshold },
+    // Only t1 is a capability threshold and the only one a stage trigger
+    // reads. t2/t3/t4 are sociotechnical and live in EXPERT_CONFIG as
+    // t2DemandThreshold, t2LegitimacyThreshold, t3CaptureThreshold and
+    // t4DependencyThreshold.
+    THRESHOLDS: { t1: EXPERT_CONFIG.t1Threshold },
     DIMENSIONS: {
       reasoning: { slope: EXPERT_CONFIG.reasoningScalingSlope, ceiling: EXPERT_CONFIG.ceilingReasoningBase },
       agency:    { slope: EXPERT_CONFIG.agencyScalingSlope }, // Потолок определяет частица
@@ -734,9 +746,13 @@ function stepDynamics(st, cfg, dt, stochastic, particle) {
 
   // ---- Thresholds ---------------------------------------------------------
   if (st.yT1 === null && R >= cfg.THRESHOLDS.t1 && W >= cfg.THRESHOLDS.t1 * 0.6) st.yT1 = year;
-  if (st.yT2 === null && DP > 0.5 && st.IL > 0.3) st.yT2 = year;
-  if (st.yT3 === null && st.IC > 0.6) st.yT3 = year;
-  if (st.yT4 === null && DR > 0.9 && Emb >= E.embodimentT4Requirement) st.yT4 = year;
+  // T2/T3/T4 previously fired on literals here while the expert panel
+  // exposed t2Threshold/t3Threshold/t4Threshold as sliders that nothing
+  // read. The sliders moved; the forecast did not. The values below are
+  // the literals that were here, so the default forecast is unchanged.
+  if (st.yT2 === null && DP > E.t2DemandThreshold && st.IL > E.t2LegitimacyThreshold) st.yT2 = year;
+  if (st.yT3 === null && st.IC > E.t3CaptureThreshold) st.yT3 = year;
+  if (st.yT4 === null && DR > E.t4DependencyThreshold && Emb >= E.embodimentT4Requirement) st.yT4 = year;
 
   st.step = (st.step || 0) + 1;
   return { R, A, W, Emb, DP, IL: st.IL, IC: st.IC, II: st.II, DR, S, C, M, cap, P };
@@ -1138,6 +1154,78 @@ class ParticleFilterTracker {
     };
   }
 
+  // --------------------------------------------------------------------------
+  // Prior sensitivity: how much of the forecast is data and how much is prior?
+  //
+  // The stage medians the page publishes come out of stepDynamics, whose
+  // particle prior for agency_ceiling is N(priorAgencyMean, priorAgencyStd).
+  // "10 is AGI" is an ASSUMPTION, and the benchmark history cannot test it.
+  // Quoting a median to 0.1 years while that holds reads as precision the model
+  // does not have.
+  //
+  // Re-runs the same forecast with the prior scaled to 0.7x and 1.3x, seed held
+  // fixed so the difference is attributable to the prior alone. It rescales
+  // particles ABOUT the prior mean rather than resampling: resampling from an
+  // already-conditioned posterior would measure the spread of the fit, not the
+  // dependence on the assumption.
+  priorSensitivity(opts) {
+    const o = opts || {};
+    const nRuns = o.nRuns || 250;
+    const scales = o.scales || [0.7, 1.0, 1.3];
+    const baseMean = EXPERT_CONFIG.priorAgencyMean;
+    const stages = ['t1Years', 't2Years', 't3Years', 't4Years'];
+
+    // runMonteCarloForecast() draws from the global stream, so calling it three
+    // times in sequence gives each scale a different set of noise draws and the
+    // spread it reports mixes the prior effect with sampling noise (measured:
+    // two identical runs differed by 0.17y on the T3 median). Save and restore
+    // the RNG state around the whole sweep so the same seed yields the same
+    // numbers, and so the only thing varying across the rows is the prior.
+    const savedRngState = __rngState;
+    const savedSeed = __seed;
+    const rows = scales.map(scale => {
+      const state = this.cloneState();
+      for (const p of state.particles) {
+        p.agency_ceiling = Math.max(2.0,
+          baseMean + (p.agency_ceiling - baseMean) * scale);
+      }
+      const savedParticles = this.particles;
+      const savedWeights = this.weights;
+      this.particles = state.particles;
+      this.weights = state.weights;
+      let mc;
+      try {
+        mc = this.runMonteCarloForecast(nRuns);
+      } finally {
+        this.particles = savedParticles;
+        this.weights = savedWeights;
+      }
+      const row = { scale, priorAgencyMean: baseMean * scale, med: {} };
+      for (const st of stages) {
+        const arr = (mc[st] || []).filter(v => isFinite(v));
+        if (arr.length) row.med[st] = percentile(arr, 50);
+      }
+      return row;
+    });
+
+    const base = rows.find(r => r.scale === 1.0) || rows[0];
+    const sensitivity = {};
+    for (const st of stages) {
+      const vals = rows.map(r => r.med[st]).filter(v => isFinite(v));
+      if (vals.length < 2) { sensitivity[st] = null; continue; }
+      const lo = Math.min(...vals), hi = Math.max(...vals);
+      const b = base.med[st];
+      // rel is null when the baseline sits at/past the present (T1/T2 are
+      // already reached), where a ratio against ~0 is meaningless.
+      sensitivity[st] = (isFinite(b) && Math.abs(b) > 0.25)
+        ? { min: lo, max: hi, spread: hi - lo, rel: (hi - lo) / Math.abs(b) }
+        : { min: lo, max: hi, spread: hi - lo, rel: null };
+    }
+    __rngState = savedRngState;
+    __seed = savedSeed;
+    return { basePrior: baseMean, scales, rows, sensitivity };
+  }
+
   // Restore cloned state
   restoreState(state) {
     this.particles = state.particles.map(p => ({ ...p }));
@@ -1475,6 +1563,66 @@ function updateTrackerUI(tracker) {
       </div>
     `;
   }
+
+  renderPriorSensitivity(tracker);
+}
+
+// --------------------------------------------------------------------------
+// Show how much of the forecast is prior rather than data.
+//
+// The medians above are quoted to 0.1 years, but the agency ceiling the stage
+// triggers depend on is a PRIOR ("10 is AGI" was claimed in the expert panel
+// while the value was 8), and no benchmark observation can test it. This runs
+// the same forecast with the prior at 0.7x and 1.3x and prints the resulting
+// range, so the precision on screen is visibly wider than the point estimate.
+//
+// Deferred: three extra Monte Carlo passes take long enough to drop frames if
+// run inline, and the posterior panel is the wrong place to stutter in. Cached
+// by observation count + prior, because it only changes when one of those does.
+let _priorSensCache = { key: null, html: null, pending: false, lang: null };
+function renderPriorSensitivity(tracker) {
+  const el = document.getElementById('priorSens');
+  if (!el) return;
+  const lang = window._lang || 'ru';
+  const L = LANG[lang];
+  // The cache key includes the language: the cached HTML is already
+  // translated, so without lang in the key a language switch left the panel
+  // showing Russian under an English page.
+  const key = tracker.observationLog.length + '|' + EXPERT_CONFIG.priorAgencyMean + '|' + lang;
+  if (_priorSensCache.key === key && _priorSensCache.html) {
+    el.innerHTML = _priorSensCache.html;
+    return;
+  }
+  if (_priorSensCache.pending) return;
+  _priorSensCache.pending = true;
+  el.innerHTML = `<div class="muted" style="font-size:0.75rem">${L.prior_sens_pending || '…'}</div>`;
+  setTimeout(() => {
+    _priorSensCache.pending = false;
+    let s;
+    try {
+      s = tracker.priorSensitivity({ nRuns: 150 });
+    } catch (err) {
+      el.innerHTML = `<div class="muted" style="font-size:0.75rem">${L.prior_sens_failed || 'n/a'}</div>`;
+      return;
+    }
+    const fmt = v => (isFinite(v) ? v.toFixed(1) : '—');
+    const line = (label, sv, relKey) => {
+      if (!sv) return '';
+      const rel = sv.rel === null ? '' : ` (${Math.round(sv.rel * 100)}%)`;
+      return `<div style="margin-top:3px">${label}: <span style="font-family:monospace;color:#58a6ff">${fmt(sv.min)} – ${fmt(sv.max)}</span> ${L.prior_sens_unit || 'г.'}${rel}</div>`;
+    };
+    const html = `
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-top:8px;border-top:1px dashed #1e1e2e;padding-top:8px;line-height:1.4">
+        <b style="color:#f0883e">${L.prior_sens_title || 'Чувствительность к априорам'}</b>
+        <div style="margin-top:2px">${L.prior_sens_note || 'T3/T4 при априоре потолка агентности ±30% (это допущение, а не измерение):'}</div>
+        ${line('T3', s.sensitivity.t3Years)}
+        ${line('T4', s.sensitivity.t4Years)}
+        <div style="margin-top:4px;color:#6b7280">${L.prior_sens_prior || 'Априор:'} ${s.basePrior}</div>
+      </div>`;
+    _priorSensCache.key = key;
+    _priorSensCache.html = html;
+    el.innerHTML = html;
+  }, 60);
 }
 
 let hasUserInput = false;
@@ -2006,7 +2154,7 @@ const LANG = {
     expert_d_overhangShiftMultiplier:'Влияние избытка капитала на вероятность прорыва',
     expert_d_paradigmDecayRate:'Насколько слабее каждый следующий сдвиг (0=бесконечная сингулярность)',
     expert_d_plateauHardWallCeiling:'Потолок agency_ceiling для hard_wall частиц (ниже = жёстче плато)',
-    expert_d_priorAgencyMean:'Базовое ожидание потолка агентности (=10 это AGI)',
+    expert_d_priorAgencyMean:'Априорное среднее потолка агентности. Сдвиг на ±30% меняет медиану T3 на 4.2-7.7 года — это допущение, а не измерение',
     expert_d_priorAgencyStd:'Разброс мнений о потолке (больше = больше оптимистичных частиц)',
     expert_d_realRoboticsWeight:'Вес prior на embodiment_ceiling от реальных роботов (Spot/Optimus/Figure/1X)',
     expert_d_reasoningScalingSlope:'Наклон кривой масштабирования FLOPs → Reasoning',
@@ -2016,9 +2164,9 @@ const LANG = {
     expert_d_saturationThreshold:'Насколько надо упереться для смены парадигмы',
     expert_d_simulations:'Количество Monte Carlo прогонов (500-10000)',
     expert_d_t1Threshold:'Порог capability для T1',
-    expert_d_t2Threshold:'Порог capability для T2',
-    expert_d_t3Threshold:'Порог capability для T3',
-    expert_d_t4Threshold:'Порог capability для T4 (Влияние)',
+    expert_d_t2DemandThreshold:'Спрос на ИИ-координатора (DP) при котором T2 достигнут',
+    expert_d_t3CaptureThreshold:'Доля захваченных институтов (IC) при которой T3 достигнут',
+    expert_d_t4DependencyThreshold:'Цивилизационная зависимость (DR) при которой T4 достигнут',
     expert_d_toolUseVsAutonomyWeight:'0 = бенчмарк взлабывается reasoning, 1 = только реальная автономность',
     expert_d_winterDamping:'Множитель инвестиций и алгоритмов в Зиму ИИ',
     expert_p_agencyScalingSlope:'Наклон Agency',
@@ -2064,9 +2212,9 @@ const LANG = {
     expert_p_saturationThreshold:'Порог насыщения',
     expert_p_simulations:'Симуляции (N)',
     expert_p_t1Threshold:'Порог T1 (Понимание)',
-    expert_p_t2Threshold:'Порог T2 (Предсказуемость)',
-    expert_p_t3Threshold:'Порог T3 (Контроль)',
-    expert_p_t4Threshold:'Порог T4 (Влияние)',
+    expert_p_t2DemandThreshold:'Порог спроса T2 (DP)',
+    expert_p_t3CaptureThreshold:'Порог захвата T3 (IC)',
+    expert_p_t4DependencyThreshold:'Порог зависимости T4 (DR)',
     expert_p_toolUseVsAutonomyWeight:'Вес Autonomy в SWE-bench',
     expert_p_winterDamping:'Строгость Зимы ИИ',
     expert_toggle_label:'Expert Sandbox', expert_toggle_title:'Collapse / expand the panel',
@@ -2104,7 +2252,7 @@ const LANG = {
     // Header
     hdr_title:'Singularity Forecaster', hdr_sub:'v5.4 — Четыре стадии отлучения',
     // Status bar
-    sb_t1:'Медиана T1 (Когнитивное доминирование)', sb_t2:'Медиана T2 (Автономная легитимность)',
+    sb_t1:'Медиана T1 (Когнитивное доминирование)', sb_t2:'Медиана T2 (Предсказуемость)',
     sb_t3:'Медиана T3 (Институциональный захват)', sb_t4:'Медиана T4 (Цивилизационная зависимость)',
     sb_pagi_2029:'P(T2 · 2029)', sb_pagi_2033:'P(T2 · 2033)', sb_pagi_2040:'P(T2 · 2040)',
     sb_pasi_2035:'P(T4 · 2035)', sb_pasi_2045:'P(T4 · 2045)',
@@ -2131,7 +2279,7 @@ const LANG = {
     tip7:'Декомпозиция логарифмического роста ∫₀ᵗ (k_hw + k_algo + k_rsi) dt. Площади отражают интегральный вклад аппаратного масштабирования, алгоритмической эффективности, парадигмальных сдвигов и рекурсивной обратной связи (RSI).',
     tip_gap:'Эпистемическая дивергенция между когнитивной мощностью (Reasoning) и каузальным согласованием (World Modeling). Зона высокого риска, где R(t) ≫ W(t), характеризующаяся структурными галлюцинациями.',
     tip8:'Марковская оценка латентной переменной Embodiment. Верхняя панель: перцентильный коридор прогноза E(t) с эмпирической калибровкой на индексе реальной робототехники. Нижняя панель: маргинальное распределение E_ceiling в апостериорном ансамбле.',
-    ch_t1:'T1: Доминирование', ch_t2:'T2: Легитимность', ch_t3:'T3: Захват институтов', ch_t4:'T4: Зависимость',
+    ch_t1:'T1: Доминирование', ch_t2:'T2: Предсказуемость', ch_t3:'T3: Захват институтов', ch_t4:'T4: Зависимость',
     // The live-swarm captions carried data-i18n keys in the markup but were
     // never defined in either pack, so the whole section stayed Russian even
     // after switching to English.
@@ -2182,10 +2330,10 @@ const LANG = {
     t1_def_score:'Критерий: R > Эксперт, W > Эксперт',
     t1_def_text1:'Система стабильно превосходит лучших специалистов в большинстве когнитивных задач. Пользование становится ритуальным. Машины лучше людей пишут архитектуры машин (запуск RSI).',
     t1_def_text2:'Промежуточные стадии: Инструмент → Усилитель → Посредник.',
-    t2_def_title:'T2: Автономный порог легитимности',
+    t2_def_title:'T2: Порог предсказуемости',
     t2_def_score:'Критерий: DP > 0.5, IL > 0.3',
-    t2_def_text1:'Людям становится выгодно массово передавать управление ИИ. Система выступает как координатор. Начинается приток бесконечного капитала, так как ИИ легитимизирован в корпоративных и гос. процессах.',
-    t2_def_text2:'Промежуточные стадии: Координатор → Арбитр → Архитектор среды.',
+    t2_def_text1:'ИИ становится предсказуемым инструментом координации: спрос (DP) на него как на посредника превышает порог, а институциональная принятость (IL) достигает необходимого уровня. Модель измеряет спрос и принятость, а не выгоду людей от передачи управления — человеческой переменной в модели нет.',
+    t2_def_text2:'Промежуточные стадии: Координатор → Арбитр → Архитектор среды. Критерий: DP и IL, а не capability.',
     t3_def_title:'T3: Порог институционального захвата',
     t3_def_score:'Критерий: IC > 0.6',
     t3_def_text1:'Отключение системы вызовет коллапс институтов и экономики. ИИ получает структурную «броню» от государственного регулирования — политики сами становятся функцией инфраструктуры.',
@@ -2220,6 +2368,12 @@ const LANG = {
     // The markup element for this key ships empty (JS fills it in), so the
     // generator that harvested the other 167 RU strings had no text to copy.
     v3_no_agi:'AGI не достигнут ни одной частицей за горизонт',
+    prior_sens_title:'Чувствительность к априорам',
+    prior_sens_note:'T3/T4 при априоре потолка агентности ±30%. Это допущение, а не измерение:',
+    prior_sens_prior:'Априор:',
+    prior_sens_pending:'Считаем чувствительность…',
+    prior_sens_unit:'г.',
+    prior_sens_failed:'Чувствительность недоступна',
     wm_posterior_title:'Текущие апостериорные веса гипотез',
     // Swarm canvas
     swarm_canvas_median:'Медиана',
@@ -2327,7 +2481,7 @@ const LANG = {
     expert_d_overhangShiftMultiplier:'How excess capital affects the odds of a breakthrough',
     expert_d_paradigmDecayRate:'How much weaker each successive shift is (0 = endless singularity)',
     expert_d_plateauHardWallCeiling:'agency_ceiling ceiling for hard_wall particles (lower = harsher plateau)',
-    expert_d_priorAgencyMean:'Prior expectation for the agency ceiling (= 10 is AGI)',
+    expert_d_priorAgencyMean:'Prior mean of the agency ceiling. A ±30% shift moves the T3 median between 4.2 and 7.7 years — this is an assumption, not a measurement',
     expert_d_priorAgencyStd:'Spread of belief about the ceiling (larger = more optimistic particles)',
     expert_d_realRoboticsWeight:'Prior weight on embodiment_ceiling from real robots (Spot/Optimus/Figure/1X)',
     expert_d_reasoningScalingSlope:'Slope of the FLOPs → Reasoning scaling curve',
@@ -2337,9 +2491,9 @@ const LANG = {
     expert_d_saturationThreshold:'How far capabilities must push for a paradigm shift',
     expert_d_simulations:'Number of Monte Carlo runs (500–10000)',
     expert_d_t1Threshold:'Capability threshold for T1',
-    expert_d_t2Threshold:'Capability threshold for T2',
-    expert_d_t3Threshold:'Capability threshold for T3',
-    expert_d_t4Threshold:'Capability threshold for T4 (Influence)',
+    expert_d_t2DemandThreshold:'Demand for an AI coordinator (DP) at which T2 fires',
+    expert_d_t3CaptureThreshold:'Share of institutions captured (IC) at which T3 fires',
+    expert_d_t4DependencyThreshold:'Civilisational dependency (DR) at which T4 fires',
     expert_d_toolUseVsAutonomyWeight:'0 = the benchmark is gamed by reasoning, 1 = only real autonomy counts',
     expert_d_winterDamping:'Investment and algorithm multiplier during an AI Winter',
     expert_p_agencyScalingSlope:'Agency slope',
@@ -2385,9 +2539,9 @@ const LANG = {
     expert_p_saturationThreshold:'Saturation threshold',
     expert_p_simulations:'Simulations (N)',
     expert_p_t1Threshold:'T1 threshold (Understanding)',
-    expert_p_t2Threshold:'T2 threshold (Predictability)',
-    expert_p_t3Threshold:'T3 threshold (Control)',
-    expert_p_t4Threshold:'T4 threshold (Influence)',
+    expert_p_t2DemandThreshold:'T2 demand threshold (DP)',
+    expert_p_t3CaptureThreshold:'T3 capture threshold (IC)',
+    expert_p_t4DependencyThreshold:'T4 dependency threshold (DR)',
     expert_p_toolUseVsAutonomyWeight:'Autonomy weight in SWE-bench',
     expert_p_winterDamping:'AI Winter severity',
     expert_toggle_label:'Expert Sandbox',
@@ -2426,7 +2580,7 @@ const LANG = {
     // Header
     hdr_title:'Singularity Forecaster', hdr_sub:'v5.4 — Four Stages of Disengagement',
     // Status bar
-    sb_t1:'Median T1 (Cognitive Dominance)', sb_t2:'Median T2 (Autonomous Legitimacy)',
+    sb_t1:'Median T1 (Cognitive Dominance)', sb_t2:'Median T2 (Predictability)',
     sb_t3:'Median T3 (Institutional Capture)', sb_t4:'Median T4 (Civilizational Dependency)',
     sb_pagi_2029:'P(T2 · 2029)', sb_pagi_2033:'P(T2 · 2033)', sb_pagi_2040:'P(T2 · 2040)',
     sb_pasi_2035:'P(T4 · 2035)', sb_pasi_2045:'P(T4 · 2045)',
@@ -2455,7 +2609,7 @@ const LANG = {
     tip7:'Log-space decomposition ∫₀ᵗ (k_hw + k_algo + k_rsi) dt. Areas represent the integral contribution of hardware scaling, algorithmic efficiency, paradigm shifts, and recursive feedback (RSI).',
     tip_gap:'Epistemic divergence between cognitive capacity (Reasoning) and causal grounding (World Modeling). A high-risk zone where R(t) ≫ W(t), characterized by structural hallucinations.',
     tip8:'Markov estimation of the Embodiment latent variable. Top: percentile corridor of E(t) calibrated against empirical robotic indices. Bottom: marginal posterior distribution of the E_ceiling parameter.',
-    ch_t1:'T1: Dominance', ch_t2:'T2: Legitimacy', ch_t3:'T3: Capture', ch_t4:'T4: Dependency',
+    ch_t1:'T1: Dominance', ch_t2:'T2: Predictability', ch_t3:'T3: Capture', ch_t4:'T4: Dependency',
     // Live swarm captions — see the RU note on why these were missing.
     live_swarm_title:'Real-time simulation',
     live_swarm_desc:'Every 0.25 s the swarm is redrawn from a fresh Monte Carlo run. T1–T4 are the stage colour codes.',
@@ -2499,10 +2653,10 @@ const LANG = {
     t1_def_score:'Criterion: R > Expert, W > Expert',
     t1_def_text1:'System consistently outperforms top specialists in most cognitive tasks. Usage becomes ritualistic. Machines write machine architectures better than humans (RSI triggers).',
     t1_def_text2:'Role in model: onset of understanding loss. Trigger for autonomous scaling.',
-    t2_def_title:'T2: Autonomous Legitimacy Threshold',
+    t2_def_title:'T2: Predictability Threshold',
     t2_def_score:'Criterion: DP > 0.5, IL > 0.3',
-    t2_def_text1:'It becomes highly profitable for humans to massively transfer control to AI. The system acts as a coordinator. Infinite capital inflow begins as AI becomes legitimized in corporate and state processes.',
-    t2_def_text2:'Role in model: trigger for massive capital integration and subsequent dependency.',
+    t2_def_text1:'AI becomes a predictable coordination instrument: demand for it as an intermediary (DP) crosses the threshold while institutional acceptance (IL) reaches the required level. The model measures demand and acceptance, not the profit humans get from handing over control — there is no human-side variable in it.',
+    t2_def_text2:'Intermediate stages: Coordinator → Arbitrator → Environment architect. Trigger: DP and IL, not capability.',
     t3_def_title:'T3: Institutional Capture Threshold',
     t3_def_score:'Criterion: IC > 0.6',
     t3_def_text1:'Disconnecting the system will cause institutional and economic collapse. AI gains structural "armor" against government regulation—politicians themselves become a function of the infrastructure.',
@@ -2534,6 +2688,12 @@ const LANG = {
     data_panel_loading:'Loading data...',
     // v3 params panel
     v3_params_title:'Simulation Parameters', v3_no_t4:'No T4 by 2068 in any particle',
+    prior_sens_title:'Prior sensitivity',
+    prior_sens_note:'T3/T4 with the agency-ceiling prior at ±30%. An assumption, not a measurement:',
+    prior_sens_prior:'Prior:',
+    prior_sens_pending:'Computing sensitivity…',
+    prior_sens_unit:'y',
+    prior_sens_failed:'Sensitivity unavailable',
     wm_posterior_title:'Current Posterior Hypothesis Weights',
     // Footer / misc
     // Swarm canvas
@@ -3449,15 +3609,10 @@ window.addEventListener('load', async () => {
   try {
     setLang('ru');
 
-    // Скрываем устаревшие ползунки T2, T3, T4, так как в v5.0 они вычисляются органически
-    ['e-t2Threshold', 'e-t3Threshold', 'e-t4Threshold'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) {
-        // Находим ближайший контейнер .expert-param и скрываем его
-        const container = el.closest('.expert-param') || el.parentElement;
-        if (container) container.style.display = 'none';
-      }
-    });
+    // The old e-t2Threshold / e-t3Threshold / e-t4Threshold capability
+    // sliders were hidden here because no trigger read them. Their
+    // replacements are the thresholds actually compared, so nothing is
+    // hidden any more and these sliders now change the forecast.
 
     injectExpertPresets();
 
@@ -3564,6 +3719,18 @@ function setLang(lang) {
     }
   } catch (e) {
     console.warn('setLang: chart redraw failed:', e && e.message);
+  }
+  // The prior-sensitivity panel is written as innerHTML from LANG, so it is not
+  // covered by the data-i18n sweep above and was left in the old language after
+  // a switch. Invalidate the cache (its key now includes the language) and
+  // re-render from the live tracker.
+  try {
+    if (typeof renderPriorSensitivity === 'function' && typeof coreTracker !== 'undefined' && coreTracker) {
+      _priorSensCache.key = null;
+      renderPriorSensitivity(coreTracker);
+    }
+  } catch (e) {
+    console.warn('setLang: prior sensitivity redraw failed:', e && e.message);
   }
 }
 

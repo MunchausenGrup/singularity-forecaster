@@ -519,29 +519,38 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
 
       <div class="expert-param">
         <div class="expert-param-label">
-          <span class="expert-param-name" data-i18n="expert_p_t2Threshold">Порог T2 (Предсказуемость)</span>
-          <span class="expert-param-value" id="ev-t2Threshold">10.0</span>
+          <span class="expert-param-name" data-i18n="expert_p_t2DemandThreshold">Порог спроса T2 (DP)</span>
+          <span class="expert-param-value" id="ev-t2DemandThreshold">0.50</span>
         </div>
-        <input type="range" id="e-t2Threshold" min="5" max="20" step="0.5" value="10" oninput="expertUpdate('t2Threshold',this.value)">
-        <div class="expert-param-desc" data-i18n="expert_d_t2Threshold">Порог capability для T2</div>
+        <input type="range" id="e-t2DemandThreshold" min="0.2" max="0.9" step="0.01" value="0.5" oninput="expertUpdate('t2DemandThreshold',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_t2DemandThreshold">Спрос на ИИ-координатора (DP) при котором T2 достигнут</div>
       </div>
 
       <div class="expert-param">
         <div class="expert-param-label">
-          <span class="expert-param-name" data-i18n="expert_p_t3Threshold">Порог T3 (Контроль)</span>
-          <span class="expert-param-value" id="ev-t3Threshold">25.0</span>
+          <span class="expert-param-name" data-i18n="expert_p_t2LegitimacyThreshold">Порог принятия T2 (IL)</span>
+          <span class="expert-param-value" id="ev-t2LegitimacyThreshold">0.30</span>
         </div>
-        <input type="range" id="e-t3Threshold" min="10" max="50" step="1" value="25" oninput="expertUpdate('t3Threshold',this.value)">
-        <div class="expert-param-desc" data-i18n="expert_d_t3Threshold">Порог capability для T3</div>
+        <input type="range" id="e-t2LegitimacyThreshold" min="0.1" max="0.8" step="0.01" value="0.3" oninput="expertUpdate('t2LegitimacyThreshold',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_t2LegitimacyThreshold">Институциональная принятость (IL) при которой T2 достигнут</div>
       </div>
 
       <div class="expert-param">
         <div class="expert-param-label">
-          <span class="expert-param-name" data-i18n="expert_p_t4Threshold">Порог T4 (Влияние)</span>
-          <span class="expert-param-value" id="ev-t4Threshold">100.0</span>
+          <span class="expert-param-name" data-i18n="expert_p_t3CaptureThreshold">Порог захвата T3 (IC)</span>
+          <span class="expert-param-value" id="ev-t3CaptureThreshold">0.60</span>
         </div>
-        <input type="range" id="e-t4Threshold" min="30" max="200" step="5" value="100" oninput="expertUpdate('t4Threshold',this.value)">
-        <div class="expert-param-desc" data-i18n="expert_d_t4Threshold">Порог capability для T4 (Влияние)</div>
+        <input type="range" id="e-t3CaptureThreshold" min="0.2" max="0.95" step="0.01" value="0.6" oninput="expertUpdate('t3CaptureThreshold',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_t3CaptureThreshold">Доля захваченных институтов (IC) при которой T3 достигнут</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_t4DependencyThreshold">Порог зависимости T4 (DR)</span>
+          <span class="expert-param-value" id="ev-t4DependencyThreshold">0.90</span>
+        </div>
+        <input type="range" id="e-t4DependencyThreshold" min="0.5" max="0.99" step="0.01" value="0.9" oninput="expertUpdate('t4DependencyThreshold',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_t4DependencyThreshold">Цивилизационная зависимость (DR) при которой T4 достигнут</div>
       </div>
 
       <div class="expert-param">
@@ -1039,6 +1048,7 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
 <!-- ===== v3 PARAMS ===== -->
 <div id="v3Panel" style="display:block;background:var(--bg-secondary);border-bottom:1px solid var(--border);padding:10px 32px">
   <div id="v3Params" style="font-size:.72rem;color:var(--text-muted)"></div>
+  <div id="priorSens"></div>
   <div id="v3Observations" style="font-size:.72rem;color:var(--text-muted)"></div>
   <div id="v3Warning" style="margin-top:4px;font-size:.72rem;color:var(--orange);display:none"></div>
   <div id="v3NoAgi" style="display:none;margin-top:4px;font-size:.7rem;color:var(--text-muted)" data-i18n="v3_no_agi"></div>
