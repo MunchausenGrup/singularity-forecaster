@@ -36,7 +36,14 @@ body{font-family:var(--font);background:var(--bg-primary);color:var(--text-prima
 ::-webkit-scrollbar-thumb:hover{background:var(--border-hover)}
 
 /* ===== LAYOUT ===== */
-.app{display:flex;flex-direction:column;min-height:100vh}
+/* This page is a long scrolling document, so a section must NOT reserve a whole
+   viewport for itself. `.app` held min-height:100vh while its own content
+   (header, status cards, collapsed sandbox) is only ~384px, so it left roughly
+   920px of empty space between the sandbox and the next section — measured, not
+   guessed: .app occupied y=0..1305 with children ending at y=384. body already
+   carries min-height:100vh, so dropping it here is safe and changes nothing
+   about the page filling the first screen. */
+.app{display:flex;flex-direction:column}
 
 /* ===== HEADER ===== */
 .header{background:linear-gradient(135deg,var(--bg-secondary),var(--bg-primary));border-bottom:1px solid var(--border);padding:20px 32px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;position:sticky;top:0;z-index:100;backdrop-filter:blur(20px)}
