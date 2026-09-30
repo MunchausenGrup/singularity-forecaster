@@ -1134,7 +1134,15 @@ class ParticleFilterTracker {
     this.n = this.particles.length;
   }
 
-  async runSensitivityMatrixAsync(arcRange, sweRange) {
+  // stageYearsKey selects which stopping time the heatmap measures.
+  //
+  // It used to be hardcoded to t2Years, which made the chart useless: measured
+  // over the same 6x8 benchmark grid, the median years-to-T2 spans only
+  // -0.42..-0.33 (range 0.08 years, 3 distinct values) because T2 is already
+  // reached at every benchmark pair. T4 is nearly as flat (range 0.46). T3
+  // carries the signal — range 1.83 years, 24 distinct values — so the default
+  // is 't3Years' and the caption names the stage.
+  async runSensitivityMatrixAsync(arcRange, sweRange, stageYearsKey = 't3Years') {
     const baseObs = REAL_BENCHMARK_HISTORY[REAL_BENCHMARK_HISTORY.length - 1];
     const state = this.cloneState();
 
@@ -1146,7 +1154,7 @@ class ParticleFilterTracker {
         this.observeRealData(baseObs.year, { arcAgi: arc, sweBench: swe });
         // Снижаем кол-во MC прогонов для тепловой карты (ускорение в 6 раз)
         const mc = this.runMonteCarloForecast(50);
-        const finite = mc.t2Years.filter(isFinite);
+        const finite = (mc[stageYearsKey] || []).filter(isFinite);
         row.push(finite.length > 0 ? percentile(finite, 50) : 40);
       }
       results.push(row);
@@ -1683,7 +1691,8 @@ async function plotSensitivityHeatmap(tracker) {
 
   if (!document.getElementById('c5')) return;
 
-  const labelText = t.ch5_label || 'Лет до T2';
+  // Default must match runSensitivityMatrixAsync's stage (T3).
+  const labelText = t.ch5_label || 'Лет до T3';
   const textMatrix = matrix.map((row, i) =>
     row.map((v, j) => `ARC=${arcRange[i]}%, SWE=${sweRange[j]}%<br>${labelText}: ${v.toFixed(1)} лет`)
   );
@@ -1697,11 +1706,13 @@ async function plotSensitivityHeatmap(tracker) {
     colorscale: [[0, '#0a0a0f'], [0.2, '#1a3a4a'], [0.4, '#0e5e7a'], [0.6, '#f0883e'], [0.8, '#ef4444'], [1, '#ff0040']],
     text: textMatrix,
     hoverinfo: 'text',
-    colorbar: { title: { text: t.ch5_colorbar || 'Лет до T2' }, thickness: 12, len: 0.8 },
+    colorbar: { title: { text: t.ch5_colorbar || 'Лет до T3' }, thickness: 12, len: 0.8 },
   }], {
     ...LAYOUT_BASE,
-    xaxis: { ...LAYOUT_BASE.xaxis, title: { text: 'SWE-bench (%)' } },
-    yaxis: { ...LAYOUT_BASE.yaxis, title: { text: 'ARC-AGI (%)' } },
+    // Axis titles go through the language pack so they follow the EN/RU toggle.
+    // They were hardcoded strings, which left the chart half-translated.
+    xaxis: { ...LAYOUT_BASE.xaxis, title: { text: t.ch5_xaxis || 'SWE-bench (%)' } },
+    yaxis: { ...LAYOUT_BASE.yaxis, title: { text: t.ch5_yaxis || 'ARC-AGI (%)' } },
     margin: { l: 48, r: 10, t: 36, b: 44 },
     height: 520,
   }, PLOT_CFG);
@@ -1960,6 +1971,177 @@ function plotHallucinationGap(gt) {
 window._lang = 'ru';
 const LANG = {
   ru: {
+    // Added for RU coverage to match the EN pack. These 168 keys were used by
+    // data-i18n in the markup but present in no language pack, so the page only
+    // ever showed Russian because of the hardcoded markup fallback. Text below is
+    // copied verbatim from the markup — no rewording.
+    cum_p1:'Накопленная функция распределения: P(T2 ≤ X) и P(T4 ≤ X). Отвечает на вопрос «какова вероятность, что T2/T4 случится не позднее года X?»',
+    cum_p2:'Вычисление: из тех же 3000 прогонов. Для каждого года T:',
+    cum_p3:'Ступенчатый подъём = концентрация прогнозов в узком окне. Плато = затор (data wall, энергетика, регуляция). Резкий скачок = почти все частицы сходятся в одном сценарии.',
+    cum_p4:'T4-кривая всегда лежит правее T2 — T4 требует более высокого порога. Расстояние между кривыми = время между T2 и T4.',
+    cum_p5:'Что влияет: те же факторы, что и гистограмма. Кривые дополняют друг друга — гистограмма показывает «где пик», кумулятивная — «какова вероятность к году X».',
+    decomp_p1:'Stacked area: разбивка суммарной capability на 4 компоненты. Показывает, что движет прогрессом в каждый момент времени.',
+    decomp_p2:'Компоненты:',
+    decomp_p3:'Вычисляется через runDecomposition() — усреднение по всем частицам с весами. Переход от «железа» к «алгоритмам» к «RSI» = путь к сингулярности.',
+    eh_p1:'Анимированная визуализация распределения T2/T4. Каждая частица = один MC прогон. Вылетает из центра (2026) и застывает на орбите своего года T2/T4.',
+    eh_p2:'Метафора: плотные кольца = высокая вероятность (много частиц предсказывают AGI в этот год). Редкие точки = маловероятные сценарии.',
+    eh_p3:'Механика: при запуске частицы «взлетают» из центра с задержкой, пропорциональной году T2/T4. Цвета орбит кодируют стадии. Расстояние от центра = вес частицы.',
+    eh_p4:'Что влияет: распределение T2/T4 лет из posterior, случайность MC прогона. Симметричная сфера = один чёткий пик. Фрактальная структура = множество конкурирующих сценариев. P(T2 к 2068), медиана T2 — обновляется в реальном времени.',
+    eh_play:'Запуск',
+    eh_reset:'Сброс',
+    eh_title:'Визуализация: «Сфера Сингулярности»',
+    emb_p1:'Embodiment — 4-е латентное измерение: физическая воплощённость ИИ. cap = min(reasoning, agency, embodiment): без роботов T4 недостижим.',
+    emb_p2:'Верхний график: траектория embodiment (p10 / p25 / медиана / p75 / p90) по годам. Жёлтые точки = реальные роботы: Spot, Optimus Gen 1-3, Figure 02/03, 1X Neo, Apptronik Apollo, Unitree H1. Bypass (зелёная черта) — при embodiment выше неё ИИ строит свои дата-центры, HW-рост ускоряется ×3. T4 requirement (красная) — минимальный embodiment для засчитывания T4.',
+    emb_p3:'Нижний график: гистограмма текущего embodiment_ceiling по 1000 частицам. Среднее ~4 (роботы сложны), но есть хвост до 8-10 (быстрые оптимисты).',
+    emb_p4:'Real robotics prior: realRoboticsWeight (0…1) в Expert Panel управляет силой likelihood-штрафа за отклонение embodiment_ceiling от реальных роботов. weight=0 — игнор, weight=1 — строгое следование.',
+    expert_backtest:'📊 Бэктест',
+    expert_blkA:'Парадигмы и потолки',
+    expert_blkA2:'Смена парадигм',
+    expert_blkB:'Самоулучшение (RSI)',
+    expert_blkB2:'Железо',
+    expert_blkC:'Кризисы и штрафы',
+    expert_blkD:'Бенчмарки и наблюдения',
+    expert_blkD2:'Test-Time Compute',
+    expert_blkD3:'Априорные допущения',
+    expert_blkD4:'World Models',
+    expert_blkD5:'Симуляция',
+    expert_blkE:'Барьеры реальности',
+    expert_blkF:'Воплощённость',
+    expert_d_agencyScalingSlope:'Наклон кривой масштабирования FLOPs → Agency',
+    expert_d_alignmentCooldown:'Заморозка регуляторами после инцидента',
+    expert_d_arc_agi:'Текущий уровень ARC-AGI для наблюдений',
+    expert_d_barrierAtomsLimit:'Макс. удвоений HW в год',
+    expert_d_barrierDemandGrace:'Лет на адаптацию экономики к T2',
+    expert_d_barrierEnergyLog:'Предел FLOPs (log)',
+    expert_d_barrierGeopoliticsRisk:'Шанс государственного шока после T2',
+    expert_d_barrierNashFriction:'Координационная деградация после T3',
+    expert_d_baseShiftMultiplier:'Множитель потолка при первом сдвиге (1.1=иллюзия прорыва, 10=квантовый скачок)',
+    expert_d_bubbleBurstRisk:'Шанс краха инвестиций если agency < 4',
+    expert_d_ceilingReasoningBase:'Когда текущая архитектура упрется в стену',
+    expert_d_coordinationFriction:'Деградация при масштабировании агентов (0 = идеальная координация)',
+    expert_d_dataWallPenalty:'Множитель скорости алгоритмов при исчерпании данных',
+    expert_d_embodimentBypassThreshold:'Embodiment > порога → ИИ строит дата-центры (HW-рост ×3)',
+    expert_d_embodimentPriorMean:'Априорное среднее embodiment_ceiling (робототехника сложна)',
+    expert_d_embodimentT4Requirement:'Минимальный embodiment для засчитывания T4 (контроль атомов)',
+    expert_d_governanceMoratoriumProb:'Доля лет на моратории (0.04 = ~1 шок за 25 лет)',
+    expert_d_governanceShockDamping:'Множитель HW-роста во время моратория (0.5 = в 2 раза медленнее)',
+    expert_d_horizon:'Горизонт автономности для текущих бенчмарков',
+    expert_d_hwCoDesignBonus:'Насколько AGI ускоряет закон Мура',
+    expert_d_hypeGapThreshold:'Разрыв reasoning-agency для старта Зимы ИИ',
+    expert_d_hypeGracePeriod:'Сколько лет рынок заливает деньги в новую парадигму',
+    expert_d_inferenceSaturationCap:'Базовый интеллект, где CoT перестаёт давать бонус',
+    expert_d_maxCapitalMultiplier:'Макс. множитель инвестиций при высокой полезности',
+    expert_d_maxInferenceBonusAgency:'Максимальный множитель Test-Time Compute для автономности',
+    expert_d_maxInferenceBonusReasoning:'Максимальный множитель Test-Time Compute для логики',
+    expert_d_maxPhysicalHwGrowth:'Физический предел роста hardware',
+    expert_d_minShiftMultiplier:'Гарантированный минимум (потолок не уменьшится)',
+    expert_d_observationNoiseSigma:'Уровень доверия к бенчмаркам (меньше = строже фильтр)',
+    expert_d_observationSigmaMode:'Режим вычисления σ в likelihood',
+    expert_d_overhangShiftMultiplier:'Влияние избытка капитала на вероятность прорыва',
+    expert_d_paradigmDecayRate:'Насколько слабее каждый следующий сдвиг (0=бесконечная сингулярность)',
+    expert_d_plateauHardWallCeiling:'Потолок agency_ceiling для hard_wall частиц (ниже = жёстче плато)',
+    expert_d_priorAgencyMean:'Базовое ожидание потолка агентности (=10 это AGI)',
+    expert_d_priorAgencyStd:'Разброс мнений о потолке (больше = больше оптимистичных частиц)',
+    expert_d_realRoboticsWeight:'Вес prior на embodiment_ceiling от реальных роботов (Spot/Optimus/Figure/1X)',
+    expert_d_reasoningScalingSlope:'Наклон кривой масштабирования FLOPs → Reasoning',
+    expert_d_rsiMultiplier:'Умножает все коэффициенты RSI (0 = без самоулучшения)',
+    expert_d_rsiTriggerAgency:'Agency для старта авто-улучшений',
+    expert_d_rsiTriggerReasoning:'Reasoning для старта авто-улучшений',
+    expert_d_saturationThreshold:'Насколько надо упереться для смены парадигмы',
+    expert_d_simulations:'Количество Monte Carlo прогонов (500-10000)',
+    expert_d_t1Threshold:'Порог capability для T1',
+    expert_d_t2Threshold:'Порог capability для T2',
+    expert_d_t3Threshold:'Порог capability для T3',
+    expert_d_t4Threshold:'Порог capability для T4 (Влияние)',
+    expert_d_toolUseVsAutonomyWeight:'0 = бенчмарк взлабывается reasoning, 1 = только реальная автономность',
+    expert_d_winterDamping:'Множитель инвестиций и алгоритмов в Зиму ИИ',
+    expert_p_agencyScalingSlope:'Наклон Agency',
+    expert_p_alignmentCooldown:'Инцидент безопасности (лет)',
+    expert_p_arc_agi:'ARC-AGI (%)',
+    expert_p_barrierAtomsLimit:'Проклятие атомов',
+    expert_p_barrierDemandGrace:'Смысловой предел',
+    expert_p_barrierEnergyLog:'Термодинамика',
+    expert_p_barrierGeopoliticsRisk:'Геополитика',
+    expert_p_barrierNashFriction:'Конкуренция ИИ',
+    expert_p_baseShiftMultiplier:'Базовый множитель прорыва',
+    expert_p_bubbleBurstRisk:'Риск GPU-пузыря',
+    expert_p_ceilingReasoningBase:'Потолок Трансформеров',
+    expert_p_coordinationFriction:'Координационное трение',
+    expert_p_dataWallPenalty:'Штраф Стены Данных',
+    expert_p_embodimentBypassThreshold:'Embodiment bypass threshold',
+    expert_p_embodimentPriorMean:'Embodiment prior mean',
+    expert_p_embodimentT4Requirement:'T4 embodiment requirement',
+    expert_p_governanceMoratoriumProb:'Compute Governance',
+    expert_p_governanceShockDamping:'Демпфирование шока',
+    expert_p_horizon:'Автономность (часов)',
+    expert_p_hwCoDesignBonus:'HW ко-дизайн',
+    expert_p_hypeGapThreshold:'Порог разрыва (Зима ИИ)',
+    expert_p_hypeGracePeriod:'Венчурный хайп (лет)',
+    expert_p_inferenceSaturationCap:'Порог насыщения TTC',
+    expert_p_maxCapitalMultiplier:'Эластичность капитала',
+    expert_p_maxInferenceBonusAgency:'Макс. TTC бонус (Agency)',
+    expert_p_maxInferenceBonusReasoning:'Макс. TTC бонус (Reasoning)',
+    expert_p_maxPhysicalHwGrowth:'Макс. рост железа',
+    expert_p_minShiftMultiplier:'Мин. множитель сдвига',
+    expert_p_observationNoiseSigma:'Шум наблюдений (σ)',
+    expert_p_observationSigmaMode:'Режим шума наблюдений',
+    expert_p_overhangShiftMultiplier:'Compute Overhang',
+    expert_p_paradigmDecayRate:'Темп убывающей отдачи',
+    expert_p_plateauHardWallCeiling:'Plateau: потолок Agency',
+    expert_p_priorAgencyMean:'Априорное среднее Agency',
+    expert_p_priorAgencyStd:'Априорный разброс',
+    expert_p_realRoboticsWeight:'Real robotics prior weight',
+    expert_p_reasoningScalingSlope:'Наклон Reasoning',
+    expert_p_rsiMultiplier:'Множитель RSI',
+    expert_p_rsiTriggerAgency:'Порог RSI (Agency)',
+    expert_p_rsiTriggerReasoning:'Порог RSI (Reasoning)',
+    expert_p_saturationThreshold:'Порог насыщения',
+    expert_p_simulations:'Симуляции (N)',
+    expert_p_t1Threshold:'Порог T1 (Понимание)',
+    expert_p_t2Threshold:'Порог T2 (Предсказуемость)',
+    expert_p_t3Threshold:'Порог T3 (Контроль)',
+    expert_p_t4Threshold:'Порог T4 (Влияние)',
+    expert_p_toolUseVsAutonomyWeight:'Вес Autonomy в SWE-bench',
+    expert_p_winterDamping:'Строгость Зимы ИИ',
+    expert_toggle_label:'Expert Sandbox', expert_toggle_title:'Collapse / expand the panel',
+    expert_world_cascade:'Каскад',
+    expert_world_desc:'Априорные вероятности гипотез о структуре реальности. Сумма = 100%.',
+    expert_world_error:'Сумма должна быть 100%',
+    expert_world_hardWall:'Стена',
+    expert_world_slowTakeoff:'Медл.взлёт',
+    fan_p1:'30 случайных прогонов из posterior, наложенных полупрозрачно. Показывает разброс возможных путей capability от 2026 до 2050 года (логарифмическая шкала).',
+    fan_p2:'Каждый прогон: случайная частица (по весам) симулируется до 2050 с месячным шагом. На каждом шаге: paradigm shift, RSI, экономические бутылочные горлышка.',
+    fan_p3:'Плотные пучки = сценарии сходятся. Разброс = высокая неопределённость. Горизонтальные линии порогов T1–T4: настраиваются через Expert Sandbox.',
+    fan_p4:'Что формирует веер:• Ширина ← различие в hw_months, algo_months между частицами• Наклон ← FLOPs-scaling (hwK и algoK)• Изгибы ← paradigm shifts, RSI onset, экономические стены',
+    footer_note:'Data is estimated',
+    hist_p1:'Результат 3000 прогонов Monte Carlo из апостериорного распределения. По оси X — год, по Y — количество прогонов, в которых T2/T4 достигнут в этот год.',
+    hist_p2:'Ключевое уравнение: каждый прогон выбирается из весов частиц (systematic resampling), затем симулируется полная траектория до 2068:',
+    hist_p3:'Пик гистограммы = наиболее вероятный год. Широкое распределение = высокая неопределённость. Бимодальность = два конкурирующих сценария (например, «быстрый прорыв» vs «стагнация»).',
+    hist_p4:'Что сдвигает гистограмму: новые наблюдения бенчмарков (через обновление весов частиц), параметры Expert Sandbox (пороги RSI, парадигмы, потолки), количество частиц.',
+    loading:'Running particle-filter forecast…',
+    obs_arc:'ARC-AGI',
+    obs_cost:'Стоимость 1M токенов',
+    obs_current:'Прогноз при текущих бенчмарках:',
+    obs_horizon:'Автономность',
+    obs_swe:'SWE-bench',
+    sens_li1:'Вертикальный градиент → доминирует Intelligence',
+    sens_li2:'Горизонтальный градиент → доминирует Agency',
+    sens_li3:'Диагональный → оба параметра равноценны',
+    sens_p1:'Карта чувствительности: как прогноз зависит от последнего наблюдения Intelligence × Agentic. Ячейка (i,j) = медианный год AGI если последнее наблюдение = (Intel=i, Agentic=j).',
+    sens_p2:'Вычисление: для каждой пары (i,j) из сетки [40,45,...,85] × [10,20,...,100] выполняется runSensitivityMatrix() — берётся текущий tracker, клонируются частицы, заменяется последнее наблюдение на (i,j), запускается MC.',
+    sens_p3:'Интерпретация цвета: синий = ранний AGI (модель «верит» что мы близко); красный = поздний AGI (далеко). Градиенты показывают, какой параметр доминирует:',
+    sens_p4:'Что влияет: текущий posterior (после всех наблюдений), архитектура модели (slope reasoning/agency, потолки). Смотрите — сдвиг на 1 пункт по какой оси сильнее всего сдвигает прогноз.',
+    swarm_hint:'Нажмите «Запуск» или перетаскивайте ползунок',
+    swarm_learn_p1:'Интерактивная визуализация обновления весов частиц в реальном времени. Каждая точка — гипотеза о мире (частица): скорость роста железа hw_months и потолок агентности agency_ceiling.',
+    swarm_learn_p2:'Режим «Обучение» (Learn): ползунок прикладывает наблюдения бенчмарков одно за другим. При каждом наблюдении пересчитываются веса:',
+    swarm_learn_p3:'где Ri и Agi — предсказания частицы i на год наблюдения, σ — нешумящее правдоподобие. Частицы, чьи предсказания далеки от наблюдения, экспоненциально теряют вес.',
+    swarm_learn_p4:'Режим «Прогноз» (Forecast): все наблюдения применены. Ползунок фильтрует гипотезы по году T2 — показывая, какие частицы предсказывают T2 до выбранного года.',
+    swarm_learn_p5:'Визуальный язык: яркие области = высокая плотность весов; оранжевый круг = медиана роя; красный = текущее наблюдение. В режиме покой рой «дышит» — перестраивается из нового MC прогона каждые 0.25 сек.',
+    swarm_learn_p6:'Что влияет: количество и точность наблюдений бенчмарков, априорные допущения (priorAgencyMean/Std в Expert Sandbox), сам состав частиц.',
+    swarm_mode_forecast:'Прогноз',
+    swarm_mode_learn:'Обучение',
+    swarm_reset:'Сброс',
+    swarm_title:'Визуализация обучения и прогноза',
     // Header
     hdr_title:'Singularity Forecaster', hdr_sub:'v5.4 — Четыре стадии отлучения',
     // Status bar
@@ -1980,23 +2162,46 @@ const LANG = {
     tag5:'Чувствительность', tag6:'Сценарии', tag7:'Декомпозиция', tag8:'Embodiment',
     chart1:'1. Распределение 4-х этапов Сингулярности (Monte Carlo)',
     chart3:'2. Накопленная вероятность (Cumulative PDF)',
-    chart5:'3. Карта чувствительности (Reasoning × Agency)',
+    // The heatmap measures T3: across the benchmark grid its median spans 1.83
+    // years (24 distinct values), while T2 spans 0.08 — T2 is already reached
+    // at every benchmark pair, so a T2 heatmap was a flat block of colour.
+    chart5:'3. Чувствительность срока T3 к бенчмаркам (ARC-AGI × SWE-bench)',
     chart6:'4. Веер сценариев (Multi-Run Overlay)',
     chart7:'5. Вклад компонент (Stacked Area)',
     chart_gap:'6. Каузальный разрыв (Hallucination Gap)',
-    chart8:'7. Embodiment: распределение и реальная робототехника',
+    // c_gap has no container in the markup, so plotHallucinationGap() returns
+    // immediately and chart 6 is never rendered. Numbering runs 1-6 over the six
+    // charts that actually exist; chart_gap/tip_gap stay in the pack so the
+    // dormant chart keeps its strings if a container is ever restored.
+    chart8:'6. Embodiment: распределение и реальная робототехника',
     tip1:'Аппроксимация функции плотности вероятности (PDF) моментов достижения пороговых состояний τ = inf {t : C(t) ≥ C_crit}. Рассчитано методом Монте-Карло (N=3000) на основе сэмплирования из апостериорного распределения частиц.',
-    tip3:'Эмпирическая кумулятивная функция распределения (CDF), F(t) = P(T ≤ t). Отражает монотонно возрастающую вероятность прохождения стадий T2 и T4 к заданному году с учетом всех сценариев и дисперсии.',
-    tip5:'Тепловая карта чувствительности. Демонстрирует нелинейный отклик медианного времени τ̃_T2 на пертурбации вектора последнего наблюдения (R, A). Позволяет оценить эластичность прогноза по метрикам Reasoning и Agency.',
+    tip3:'Эмпириальная кумулятивная функция распределения (CDF), F(t) = P(T ≤ t). По одной кривой на каждый этап — T1, T2, T3, T4: вероятность, что этап достигнут не позднее соответствующего года по оси X.',
+    tip5:'Тепловая карта чувствительности. По вертикали — уровень ARC-AGI, по горизонтали — уровень SWE-bench; в ячейке — медианное число лет до T3 для такого сочетания бенчмарков.',
     tip6:'Проекция 30 стохастических траекторий C(t) из ансамбля. Визуализирует фазовые переходы (смены парадигм), эффекты RSI и влияние эндогенных шоков (схлопывание пузырей, моратории).',
     tip7:'Декомпозиция логарифмического роста ∫₀ᵗ (k_hw + k_algo + k_rsi) dt. Площади отражают интегральный вклад аппаратного масштабирования, алгоритмической эффективности, парадигмальных сдвигов и рекурсивной обратной связи (RSI).',
     tip_gap:'Эпистемическая дивергенция между когнитивной мощностью (Reasoning) и каузальным согласованием (World Modeling). Зона высокого риска, где R(t) ≫ W(t), характеризующаяся структурными галлюцинациями.',
     tip8:'Марковская оценка латентной переменной Embodiment. Верхняя панель: перцентильный коридор прогноза E(t) с эмпирической калибровкой на индексе реальной робототехники. Нижняя панель: маргинальное распределение E_ceiling в апостериорном ансамбле.',
     ch_t1:'T1: Доминирование', ch_t2:'T2: Легитимность', ch_t3:'T3: Захват институтов', ch_t4:'T4: Зависимость',
+    // The live-swarm captions carried data-i18n keys in the markup but were
+    // never defined in either pack, so the whole section stayed Russian even
+    // after switching to English.
+    live_swarm_title:'Симуляция в реальном времени',
+    live_swarm_desc:'Каждые 0.25 сек рой перерисовывается из нового прогона Monte Carlo. T1–T4 — цветовые коды стадий.',
+    live_swarm_p1:'Четыре параллельные симуляции — T1, T2, T3, T4 — обновляются каждые 0.25 сек из нового прогона Monte Carlo. Показывает «живой» posterior без необходимости нажимать «Запуск».',
+    live_swarm_p2:'Точки: каждая частица = один прогон Монте-Карло. Цвет кодирует год T1/T2/T3/T4: голубой = ранний, жёлтый = средний, красный = поздний. Прозрачность = вес частицы.',
+    live_swarm_p3:'Формула T1–T4 year: для каждой частицы моделируется траектория от BASE_YEAR (2023) на 45 лет вперёд с месячным шагом. T1, T2, T3, T4 — первые годы, где cap превышает соответствующий порог.',
+    live_swarm_p4:'Статистика справа: медиана, P10–P90, количество частиц. Обновляется в реальном времени — видна дисперсия posterior.',
+    live_swarm_p5:'Что влияет: текущий набор наблюдений, веса частиц, случайность MC прогона. Стабильность картинки ← уверенность модели. Хаотичность ← высокая неопределённость.',
     ch1_xlabel:'Год', ch1_ylabel:'Прогонов',
     ch3_xlabel:'Год', ch3_ylabel:'P(%)', ch3_pt2:'P(T2)', ch3_pt4:'P(T4)',
-    ch5_label:'Лет до T2', ch5_colorbar:'Лет до T2', ch5_xaxis:'SWE-bench (%)', ch5_yaxis:'ARC-AGI (%)', ch5_loading:'Вычисление матрицы (асинхронно)...',
+    // Names the stage the heatmap actually measures (T3 — see
+    // runSensitivityMatrixAsync on why T2 was a degenerate choice).
+    ch5_label:'Лет до T3', ch5_colorbar:'Лет до T3', ch5_xaxis:'SWE-bench (%)', ch5_yaxis:'ARC-AGI (%)', ch5_loading:'Вычисление матрицы (асинхронно)...',
     ch7_ylabel:'Суммарный вклад (log FLOPs)',
+    // ch2_xlabel is read by the scenario fan (c6) and the decomposition (c7)
+    // for their x axes. It was never defined in either language pack, so both
+    // charts rendered the literal string "undefined" as their axis title.
+    ch2_xlabel:'Год',
     ch8_median:'Медиана (MC)', ch8_p1090:'p10..p90', ch8_p2575:'p25..p75', ch8_real:'Реальные роботы', ch8_t4req:'T4 requirement', ch8_bypass:'HW bypass', ch8_y_main:'Embodiment (0..10)', ch8_x_hist:'embodiment_ceiling', ch8_y_hist:'# частиц',
     fY_suffix:' лет', fY_gt:'> 40 лет', fY_achieved:'уже достигнуто',
     expert_world_resilient:'Иммунитет',
@@ -2063,6 +2268,9 @@ const LANG = {
     data_panel_loading:'Данные загружаются...',
     // v3 params panel
     v3_params_title:'Параметры симуляции', v3_no_t4:'T4 не достигнут ни одной частицей к 2068',
+    // The markup element for this key ships empty (JS fills it in), so the
+    // generator that harvested the other 167 RU strings had no text to copy.
+    v3_no_agi:'AGI не достигнут ни одной частицей за горизонт',
     wm_posterior_title:'Текущие апостериорные веса гипотез',
     // Swarm canvas
     swarm_canvas_median:'Медиана',
@@ -2097,6 +2305,182 @@ const LANG = {
     ch8_y_hist:'# частиц',
   },
   en: {
+    // Added for full EN coverage: these keys exist in the markup but were
+    // defined in neither language pack, so setLang() could never replace the
+    // hardcoded Russian text. Measured before this fix: 155 elements still
+    // rendered Cyrillic after switching to English.
+    cum_p1:'Cumulative distribution: P(T ≤ X) for each of the four stages. Answers “how likely is it that this stage arrives no later than year X?”',
+    cum_p2:'Computed from the same 3000 runs. For each year T:',
+    cum_p3:'A steep step = forecasts concentrated in a narrow window. A plateau = a stall (data wall, energy, regulation). A sharp jump = nearly all particles converge on one scenario.',
+    cum_p4:'The T4 curve always sits to the right of T2 — T4 requires a higher threshold. The distance between the curves is the time between T2 and T4.',
+    cum_p5:'What affects it: the same factors as the histogram. The two complement each other — the histogram shows “where the peak is”, the cumulative curve shows “the probability by year X”.',
+    decomp_p1:'Stacked area: splits total capability into 4 components. Shows what drives progress at each point in time.',
+    decomp_p2:'Components:',
+    decomp_p3:'Computed via runDecomposition() — a weighted average over all particles. The shift from “hardware” to “algorithms” to “RSI” is the path to singularity.',
+    eh_p1:'Animated visualisation of the T2/T4 distribution. Each particle is one Monte Carlo run. It flies out from the centre (2026) and freezes on the orbit of its T2/T4 year.',
+    eh_p2:'Metaphor: dense rings = high probability (many particles predict that year). Sparse points = unlikely scenarios.',
+    eh_p3:'Mechanics: on start the particles "launch" from the centre with a delay proportional to the T2/T4 year. Orbit colours encode the stages. Distance from the centre is the particle weight.',
+    eh_p4:'What affects it: the T2/T4 year distribution from the posterior and Monte Carlo randomness. A symmetric sphere means one clear peak. A fractal structure means many competing scenarios. P(T2 by 2068) and the T2 median update in real time.',
+    eh_play:'Run',
+    eh_reset:'Reset',
+    eh_title:'Visualisation: "Singularity Sphere"',
+    emb_p1:'Embodiment is the 4th latent dimension: the physical grounding of AI. cap = min(reasoning, agency, embodiment) — without robots, T4 is unreachable.',
+    emb_p2:'Top panel: the embodiment trajectory (p10 / p25 / median / p75 / p90) over the years. Yellow dots = real robots: Spot, Optimus Gen 1-3, Figure 02/03, 1X Neo, Apptronik Apollo, Unitree H1. The bypass line (green) is the embodiment level above which the AI builds its own data centres and hardware growth accelerates ×3. The T4 requirement line (red) is the minimum embodiment for T4 to count.',
+    emb_p3:'Bottom panel: histogram of the current embodiment_ceiling across 1000 particles. The mean is around 4 (robotics is hard), but there is a tail reaching 8–10 (fast optimists).',
+    emb_p4:'Real robotics prior: realRoboticsWeight (0…1) in the Expert Panel controls how strongly the likelihood penalises deviation of embodiment_ceiling from real robots. weight=0 ignores the data, weight=1 enforces it strictly.',
+    expert_backtest:'📊 Backtest', expert_toggle_title:'Collapse / expand the panel',
+    // Preset button labels: the generator inserted these after the RU anchor by
+    // mistake, so EN fell back to Russian (and to the misspelled "Базовий").
+    preset_default:'Base', preset_optimist:'Optimism', preset_skeptic:'Skepticism', preset_pessimist:'Pessimism',
+    expert_apply:'Apply and run',
+    expert_blkA:'Paradigms & ceilings',
+    expert_blkA2:'Paradigm shift',
+    expert_blkB:'Self-improvement (RSI)',
+    expert_blkB2:'Hardware',
+    expert_blkC:'Crises & penalties',
+    expert_blkD:'Benchmarks & observations',
+    expert_blkD2:'Test-Time Compute',
+    expert_blkD3:'Prior assumptions',
+    expert_blkD4:'World Models',
+    expert_blkD5:'Simulation',
+    expert_blkE:'Barriers of reality',
+    expert_blkF:'Embodiment',
+    expert_d_agencyScalingSlope:'Slope of the FLOPs → Agency scaling curve',
+    expert_d_alignmentCooldown:'Regulatory freeze after an incident',
+    expert_d_arc_agi:'Current ARC-AGI level used for observations',
+    expert_d_barrierAtomsLimit:'Max HW doublings per year',
+    expert_d_barrierDemandGrace:'Years for the economy to adapt to T2',
+    expert_d_barrierEnergyLog:'FLOPs ceiling (log)',
+    expert_d_barrierGeopoliticsRisk:'Chance of a state shock after T2',
+    expert_d_barrierNashFriction:'Coordination decay after T3',
+    expert_d_baseShiftMultiplier:'Ceiling multiplier at the first shift (1.1 = illusion of breakthrough, 10 = quantum leap)',
+    expert_d_bubbleBurstRisk:'Chance the investment bubble bursts if agency < 4',
+    expert_d_ceilingReasoningBase:'When the current architecture hits its wall',
+    expert_d_coordinationFriction:'Degradation when agents scale (0 = perfect coordination)',
+    expert_d_dataWallPenalty:'Algorithm speed multiplier once data runs out',
+    expert_d_embodimentBypassThreshold:'Embodiment above this → the AI builds its own data centres (HW growth ×3)',
+    expert_d_embodimentPriorMean:'Prior mean for embodiment_ceiling (robotics is hard)',
+    expert_d_embodimentT4Requirement:'Minimum embodiment for T4 to count (control of atoms)',
+    expert_d_governanceMoratoriumProb:'Fraction of years under moratorium (0.04 ≈ 1 shock per 25 years)',
+    expert_d_governanceShockDamping:'HW growth multiplier during a moratorium (0.5 = twice as slow)',
+    expert_d_horizon:'Autonomy horizon for the current benchmarks',
+    expert_d_hwCoDesignBonus:'How much AGI accelerates Moore’s law',
+    expert_d_hypeGapThreshold:'Reasoning–agency gap that starts an AI Winter',
+    expert_d_hypeGracePeriod:'How many years the market keeps funding a new paradigm',
+    expert_d_inferenceSaturationCap:'Intelligence level at which chain-of-thought stops paying off',
+    expert_d_maxCapitalMultiplier:'Max investment multiplier at high utility',
+    expert_d_maxInferenceBonusAgency:'Maximum Test-Time Compute multiplier for autonomy',
+    expert_d_maxInferenceBonusReasoning:'Maximum Test-Time Compute multiplier for reasoning',
+    expert_d_maxPhysicalHwGrowth:'Physical limit on hardware growth',
+    expert_d_minShiftMultiplier:'Guaranteed minimum (the ceiling never falls)',
+    expert_d_observationNoiseSigma:'Trust in the benchmarks (smaller = stricter filter)',
+    expert_d_observationSigmaMode:'How σ is computed in the likelihood',
+    expert_d_overhangShiftMultiplier:'How excess capital affects the odds of a breakthrough',
+    expert_d_paradigmDecayRate:'How much weaker each successive shift is (0 = endless singularity)',
+    expert_d_plateauHardWallCeiling:'agency_ceiling ceiling for hard_wall particles (lower = harsher plateau)',
+    expert_d_priorAgencyMean:'Prior expectation for the agency ceiling (= 10 is AGI)',
+    expert_d_priorAgencyStd:'Spread of belief about the ceiling (larger = more optimistic particles)',
+    expert_d_realRoboticsWeight:'Prior weight on embodiment_ceiling from real robots (Spot/Optimus/Figure/1X)',
+    expert_d_reasoningScalingSlope:'Slope of the FLOPs → Reasoning scaling curve',
+    expert_d_rsiMultiplier:'Multiplies all RSI coefficients (0 = no self-improvement)',
+    expert_d_rsiTriggerAgency:'Agency level that starts self-improvement',
+    expert_d_rsiTriggerReasoning:'Reasoning level that starts self-improvement',
+    expert_d_saturationThreshold:'How far capabilities must push for a paradigm shift',
+    expert_d_simulations:'Number of Monte Carlo runs (500–10000)',
+    expert_d_t1Threshold:'Capability threshold for T1',
+    expert_d_t2Threshold:'Capability threshold for T2',
+    expert_d_t3Threshold:'Capability threshold for T3',
+    expert_d_t4Threshold:'Capability threshold for T4 (Influence)',
+    expert_d_toolUseVsAutonomyWeight:'0 = the benchmark is gamed by reasoning, 1 = only real autonomy counts',
+    expert_d_winterDamping:'Investment and algorithm multiplier during an AI Winter',
+    expert_p_agencyScalingSlope:'Agency slope',
+    expert_p_alignmentCooldown:'Safety incident (years)',
+    expert_p_arc_agi:'ARC-AGI (%)',
+    expert_p_barrierAtomsLimit:'Atomic curse',
+    expert_p_barrierDemandGrace:'Demand ceiling',
+    expert_p_barrierEnergyLog:'Thermodynamics',
+    expert_p_barrierGeopoliticsRisk:'Geopolitics',
+    expert_p_barrierNashFriction:'AI competition',
+    expert_p_baseShiftMultiplier:'Base breakthrough multiplier',
+    expert_p_bubbleBurstRisk:'GPU bubble risk',
+    expert_p_ceilingReasoningBase:'Transformer ceiling',
+    expert_p_coordinationFriction:'Coordination friction',
+    expert_p_dataWallPenalty:'Data Wall penalty',
+    expert_p_embodimentBypassThreshold:'Embodiment bypass threshold',
+    expert_p_embodimentPriorMean:'Embodiment prior mean',
+    expert_p_embodimentT4Requirement:'T4 embodiment requirement',
+    expert_p_governanceMoratoriumProb:'Compute governance',
+    expert_p_governanceShockDamping:'Shock damping',
+    expert_p_horizon:'Autonomy (hours)',
+    expert_p_hwCoDesignBonus:'HW co-design',
+    expert_p_hypeGapThreshold:'Gap threshold (AI Winter)',
+    expert_p_hypeGracePeriod:'Venture hype (years)',
+    expert_p_inferenceSaturationCap:'TTC saturation threshold',
+    expert_p_maxCapitalMultiplier:'Capital elasticity',
+    expert_p_maxInferenceBonusAgency:'Max. TTC bonus (Agency)',
+    expert_p_maxInferenceBonusReasoning:'Max. TTC bonus (Reasoning)',
+    expert_p_maxPhysicalHwGrowth:'Max. hardware growth',
+    expert_p_minShiftMultiplier:'Min. shift multiplier',
+    expert_p_observationNoiseSigma:'Observation noise (σ)',
+    expert_p_observationSigmaMode:'Observation noise mode',
+    expert_p_overhangShiftMultiplier:'Compute overhang',
+    expert_p_paradigmDecayRate:'Rate of diminishing returns',
+    expert_p_plateauHardWallCeiling:'Plateau: Agency ceiling',
+    expert_p_priorAgencyMean:'Agency prior mean',
+    expert_p_priorAgencyStd:'Agency prior spread',
+    expert_p_realRoboticsWeight:'Real robotics prior weight',
+    expert_p_reasoningScalingSlope:'Reasoning slope',
+    expert_p_rsiMultiplier:'RSI multiplier',
+    expert_p_rsiTriggerAgency:'RSI threshold (Agency)',
+    expert_p_rsiTriggerReasoning:'RSI threshold (Reasoning)',
+    expert_p_saturationThreshold:'Saturation threshold',
+    expert_p_simulations:'Simulations (N)',
+    expert_p_t1Threshold:'T1 threshold (Understanding)',
+    expert_p_t2Threshold:'T2 threshold (Predictability)',
+    expert_p_t3Threshold:'T3 threshold (Control)',
+    expert_p_t4Threshold:'T4 threshold (Influence)',
+    expert_p_toolUseVsAutonomyWeight:'Autonomy weight in SWE-bench',
+    expert_p_winterDamping:'AI Winter severity',
+    expert_toggle_label:'Expert Sandbox',
+    expert_world_cascade:'Cascade',
+    expert_world_desc:'Prior probabilities over hypotheses about the structure of reality. Sum = 100%.',
+    expert_world_error:'Sum must be 100%',
+    expert_world_hardWall:'Hard Wall',
+    expert_world_slowTakeoff:'Slow Takeoff',
+    fan_p1:'30 random runs from the posterior, overlaid semi-transparently. Shows the spread of possible capability paths from 2026 to 2050 (log scale).',
+    fan_p2:'Each run: a random particle (by weight) simulated to 2050 with a monthly step. At every step: paradigm shifts, RSI, and economic bottlenecks.',
+    fan_p3:'Dense bundles = scenarios converge. Spread = high uncertainty. The horizontal T1 threshold line is the only stage drawn as a line: T2, T3 and T4 are socio-technical states and cannot be shown on the capability axis.',
+    fan_p4:'What shapes the fan: • Width ← differences in hw_months, algo_months between particles • Slope ← FLOPs scaling (hwK and algoK) • Bends ← paradigm shifts, RSI onset, economic walls',
+    footer_note:'Data is estimated',
+    hist_p1:'Result of 3000 Monte Carlo runs drawn from the posterior. X axis is the year, Y axis is how many runs reach each stage in that year — all four stages, T1 through T4.',
+    hist_p2:'Key equation: each run is drawn from the particle weights (systematic resampling), then a full trajectory to 2068 is simulated:',
+    hist_p3:'The peak = the most likely year. A wide spread means high uncertainty. Bimodality means two competing scenarios (e.g. “fast breakthrough” vs “stagnation”).',
+    hist_p4:'What shifts the histogram: new benchmark observations (via the particle weight update), Expert Sandbox parameters (RSI thresholds, paradigms, ceilings), and the particle count.',
+    loading:'Running particle-filter forecast…',
+    obs_arc:'ARC-AGI',
+    obs_cost:'Cost per 1M tokens',
+    obs_current:'Forecast at the current benchmarks:',
+    obs_horizon:'Autonomy',
+    obs_swe:'SWE-bench',
+    sens_li1:'Vertical gradient → ARC-AGI dominates',
+    sens_li2:'Horizontal gradient → SWE-bench dominates',
+    sens_li3:'Diagonal → both benchmarks matter equally',
+    sens_p1:'Sensitivity map: how the forecast depends on the latest ARC-AGI × SWE-bench observation pair. Cell (i,j) = median years to T3 when the latest observation is (ARC=i, SWE=j).',
+    sens_p2:'Computation: for each (i,j) pair from the grid, runSensitivityMatrixAsync() takes the current tracker, clones the particles, replaces the latest observation with (i,j) and runs Monte Carlo.',
+    sens_p3:'Reading the colours: the scale runs from cool to hot across a median range of about 4.3 to 8.7 years. Look for the gradient:',
+    sens_p4:'What affects it: the current posterior (after all observations) and the model architecture (reasoning/agency slopes, ceilings). Watch which axis moves the forecast most when you change it by one step.',
+    swarm_hint:'Press "Run" or drag the slider',
+    swarm_learn_p1:'Interactive visualisation of the particle weight update in real time. Each point is a hypothesis about the world (a particle): its hardware growth rate hw_months and its agency ceiling agency_ceiling.',
+    swarm_learn_p2:'In "Learn" mode the slider applies benchmark observations one at a time. On each observation the weights are recomputed:',
+    swarm_learn_p3:'where Ri and Agi are particle i’s predictions for the observation year, and σ is the noise-free likelihood. Particles whose predictions are far from the observation lose weight exponentially.',
+    swarm_learn_p4:'In "Forecast" mode all observations are applied. The slider filters hypotheses by T2 year — showing which particles predict T2 before the selected year.',
+    swarm_learn_p5:'Visual language: bright areas = high weight density; the orange circle = the swarm median; red = the current observation. At rest the swarm "breathes" — rebuilt from a fresh Monte Carlo run every 0.25 s.',
+    swarm_learn_p6:'What affects it: the number and accuracy of the benchmark observations, the prior assumptions (priorAgencyMean/Std in the Expert Sandbox), and the particle composition itself.',
+    swarm_mode_forecast:'Forecast',
+    swarm_mode_learn:'Learn',
+    swarm_reset:'Reset',
+    swarm_title:'Learning and forecast visualisation',
+    v3_no_agi:'No AGI within the horizon in any particle',
     // Header
     hdr_title:'Singularity Forecaster', hdr_sub:'v5.4 — Four Stages of Disengagement',
     // Status bar
@@ -2117,23 +2501,36 @@ const LANG = {
     tag5:'Sensitivity', tag6:'Scenarios', tag7:'Decomposition', tag8:'Embodiment',
     chart1:'1. Four Stages of Singularity Distribution (Monte Carlo)',
     chart3:'2. Cumulative Probability (CDF)',
-    chart5:'3. Sensitivity Heatmap (Reasoning × Agency)',
+    // Axes are ARC-AGI and SWE-bench; cell value is years to T3.
+    chart5:'3. T3 timing sensitivity to benchmarks (ARC-AGI × SWE-bench)',
     chart6:'4. Scenario Fan (Multi-Run Overlay)',
     chart7:'5. Component Decomposition (Stacked Area)',
     chart_gap:'6. Causal Gap (Hallucination Gap)',
-    chart8:'7. Embodiment: distribution and real-world robotics',
+    // See the RU note on the skipped number 6.
+    chart8:'6. Embodiment: distribution and real-world robotics',
     tip1:'Probability Density Function (PDF) approximation of stopping times τ = inf {t : C(t) ≥ C_crit}. Computed via Monte Carlo integration (N=3000) over the posterior particle ensemble.',
-    tip3:'Empirical Cumulative Distribution Function (CDF), F(t) = P(T ≤ t). Represents the monotonically increasing probability of passing T2 and T4 stages by a given year, accounting for all uncertainties.',
-    tip5:'Sensitivity Heatmap. Demonstrates the non-linear response of median time τ̃_T2 to perturbations in the latest observation vector (R, A). Assesses forecast elasticity to Reasoning and Agency metrics.',
+    tip3:'Empirical Cumulative Distribution Function (CDF), F(t) = P(T ≤ t). One curve per stage — T1, T2, T3 and T4 — giving the probability that stage is reached no later than each year on the x axis.',
+    tip5:'Sensitivity heatmap. Vertical axis is the ARC-AGI level, horizontal axis is the SWE-bench level, and each cell holds the median number of years to T3 for that benchmark pair.',
     tip6:'Projection of 30 stochastic trajectories C(t) from the ensemble. Visualizes phase transitions (paradigm shifts), RSI feedback loops, and endogenous shocks (bubble bursts, moratoriums).',
     tip7:'Log-space decomposition ∫₀ᵗ (k_hw + k_algo + k_rsi) dt. Areas represent the integral contribution of hardware scaling, algorithmic efficiency, paradigm shifts, and recursive feedback (RSI).',
     tip_gap:'Epistemic divergence between cognitive capacity (Reasoning) and causal grounding (World Modeling). A high-risk zone where R(t) ≫ W(t), characterized by structural hallucinations.',
     tip8:'Markov estimation of the Embodiment latent variable. Top: percentile corridor of E(t) calibrated against empirical robotic indices. Bottom: marginal posterior distribution of the E_ceiling parameter.',
     ch_t1:'T1: Dominance', ch_t2:'T2: Legitimacy', ch_t3:'T3: Capture', ch_t4:'T4: Dependency',
+    // Live swarm captions — see the RU note on why these were missing.
+    live_swarm_title:'Real-time simulation',
+    live_swarm_desc:'Every 0.25 s the swarm is redrawn from a fresh Monte Carlo run. T1–T4 are the stage colour codes.',
+    live_swarm_p1:'Four parallel simulations — T1, T2, T3, T4 — are refreshed every 0.25 s from a new Monte Carlo run, showing the "live" posterior without pressing Run.',
+    live_swarm_p2:'Points: each particle is one Monte Carlo run. Colour encodes the T1/T2/T3/T4 year: blue = early, yellow = mid, red = late. Opacity encodes particle weight.',
+    live_swarm_p3:'T1–T4 year formula: for every particle a trajectory is simulated from BASE_YEAR (2023) forward 45 years with a monthly step. T1, T2, T3, T4 are the first years in which cap exceeds the corresponding threshold.',
+    live_swarm_p4:'Statistics on the right: median, P10–P90, particle count. Updated live — the dispersion of the posterior is directly visible.',
+    live_swarm_p5:'What affects it: the current observation set, particle weights, MC run randomness. A stable picture means model confidence; a chaotic one means high uncertainty.',
     ch1_xlabel:'Year', ch1_ylabel:'Runs',
     ch3_xlabel:'Year', ch3_ylabel:'P(%)', ch3_pt2:'P(T2)', ch3_pt4:'P(T4)',
-    ch5_label:'Years to T2', ch5_colorbar:'Years to T2', ch5_xaxis:'SWE-bench (%)', ch5_yaxis:'ARC-AGI (%)', ch5_loading:'Computing matrix (async)...',
+    // Stage name must match runSensitivityMatrixAsync's default.
+    ch5_label:'Years to T3', ch5_colorbar:'Years to T3', ch5_xaxis:'SWE-bench (%)', ch5_yaxis:'ARC-AGI (%)', ch5_loading:'Computing matrix (async)...',
     ch7_ylabel:'Cumulative contribution (log FLOPs)',
+    // See the RU note: this key was read by c6/c7 but never defined here either.
+    ch2_xlabel:'Year',
     ch8_median:'Median (MC)', ch8_p1090:'p10..p90', ch8_p2575:'p25..p75', ch8_real:'Real robots', ch8_t4req:'T4 requirement', ch8_bypass:'HW bypass', ch8_y_main:'Embodiment (0..10)', ch8_x_hist:'embodiment_ceiling', ch8_y_hist:'# particles',
     fY_suffix:' yrs', fY_gt:'> 40 yrs', fY_achieved:'already achieved',
     expert_world_resilient:'Resilient',
@@ -2202,7 +2599,6 @@ const LANG = {
     v3_params_title:'Simulation Parameters', v3_no_t4:'No T4 by 2068 in any particle',
     wm_posterior_title:'Current Posterior Hypothesis Weights',
     // Footer / misc
-    footer_note_en:'Data is estimated',
     // Swarm canvas
     swarm_canvas_median:'Median',
     canvas_hw_doubling:'HW Doubling (months)',
@@ -3175,7 +3571,12 @@ function setLang(lang) {
   const t = LANG[lang];
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
-    if (t[key]) el.innerHTML = t[key];
+    if (t[key]) { el.innerHTML = t[key]; return; }
+    // Attribute targets use a "[title]key" form, e.g. data-i18n="[title]expert_toggle_title".
+    // The markup had such a key but nothing ever read it, so the tooltip stayed
+    // Russian in both languages. Translate the named attribute instead of the text.
+    const m = /^\[(title|placeholder|aria-label)\](.+)$/.exec(key);
+    if (m && t[m[2]] !== undefined) el.setAttribute(m[1], t[m[2]]);
   });
   // The version badge is derived from hdr_sub rather than carrying its own
   // string. It used to be a hardcoded "v4" in the HTML with no data-i18n key,
@@ -3196,6 +3597,36 @@ function setLang(lang) {
     if (liveSwarm.timerT4) clearTimeout(liveSwarm.timerT4);
     liveSwarmTickAll();
     }
+  }
+  // The preset buttons are created once by injectExpertPresets() and carry no
+  // data-i18n attribute, so setLang()'s DOM walk cannot reach them and the
+  // labels stayed Russian after switching to English. Re-inject them: the
+  // function reads LANG[window._lang] on every call, so re-running it is enough.
+  if (typeof injectExpertPresets === 'function') {
+    try { injectExpertPresets(); } catch (e) { console.warn('setLang: presets:', e && e.message); }
+  }
+
+  // Plotly graphs carry their axis titles and legend labels inside SVG/canvas,
+  // which setLang() cannot reach through [data-i18n]. Without this the captions
+  // above each chart flipped to English while the charts themselves stayed in
+  // Russian — measured: chart1 xTitle stayed "Год" after switching to EN.
+  // Re-run the plotters; each reads its strings from LANG at call time.
+  try {
+    const tr = (typeof getTracker === 'function') ? getTracker()
+            : (typeof coreTracker !== 'undefined' && coreTracker) ? coreTracker : null;
+    if (typeof currentResults !== 'undefined' && currentResults) {
+      plotHistogram(currentResults.histogram);
+      plotCumulative(currentResults.cumulative);
+    }
+    if (tr) {
+      plotScenarioFan(tr);
+      plotDecomposition(tr);
+      if (currentResults && currentResults.embodimentTrajectory) {
+        plotEmbodimentDiagnostics(tr, currentResults.embodimentTrajectory);
+      }
+    }
+  } catch (e) {
+    console.warn('setLang: chart redraw failed:', e && e.message);
   }
 }
 
@@ -3361,7 +3792,7 @@ function injectExpertPresets() {
   const L = LANG[window._lang || 'ru'];
   
   const presets = [
-    { id: 'default',   label: L.preset_default   || 'Базовий',         color: '#58a6ff' },
+    { id: 'default',   label: L.preset_default   || 'Базовый',         color: '#58a6ff' },
     { id: 'optimist',  label: L.preset_optimist  || 'Оптимизм',   color: '#22c55e' },
     { id: 'skeptic',   label: L.preset_skeptic   || 'Скептицизм', color: '#eab308' },
     { id: 'pessimist', label: L.preset_pessimist || 'Пессимизм',  color: '#ef4444' }
@@ -3609,6 +4040,11 @@ window.uiRunBacktest = uiRunBacktest;
 
 // ---- EXPORT FOR TESTING / HEADLESS ----
 globalThis.__SINGULARITY_CORE__ = {
+  // LANG is exported so the language packs can be verified against the
+  // data-i18n keys actually present in the markup — an earlier audit had to
+  // regex-count braces to approximate this, which mis-read the pack and
+  // produced a false "168 keys still missing" report.
+  LANG,
   ParticleFilterTracker,
   simulateToYear,
   getNumericObservables,

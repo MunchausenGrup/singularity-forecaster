@@ -1095,8 +1095,8 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
     <span class="card-tag" style="background:rgba(239,68,68,.15);color:var(--red)">Live Swarm</span>
     <div class="desc-body">
       <p data-i18n="live_swarm_p1">Четыре параллельных симуляции — T1, T2, T3, T4 — обновляются каждые 0.25 сек из нового прогона Monte Carlo. Показывает «живой» posterior без необходимости нажимать «Запуск».</p>
-      <p data-i18n="live_swarm_p2"><b>Точки:</b> каждая частица = один прогон <code>runMonteCarloForecast(500)</code>. Цвет кодирует год T1/T2/T3/T4: голубой = ранний, жёлтый = средний, красный = поздний. Прозрачность = вес частицы.</p>
-      <p data-i18n="live_swarm_p3"><b>Формула T1–T4 year:</b> для каждого из 500 прогонов моделируется траектория от BASE_YEAR (2023) до 2068 с месячным шагом. T1, T2, T3, T4 — первые годы, где <code>cap</code> превышает соответствующий порог.</p>
+      <p data-i18n="live_swarm_p2"><b>Точки:</b> каждая частица = один прогон Монте-Карло. Цвет кодирует год T1/T2/T3/T4: голубой = ранний, жёлтый = средний, красный = поздний. Прозрачность = вес частицы.</p>
+      <p data-i18n="live_swarm_p3"><b>Формула T1–T4 year:</b> для каждой частицы моделируется траектория от BASE_YEAR (2023) на 45 лет вперёд с месячным шагом. T1, T2, T3, T4 — первые годы, где <code>cap</code> превышает соответствующий порог.</p>
       <p data-i18n="live_swarm_p4">Статистика справа: медиана, P10–P90, количество частиц. Обновляется в реальном времени — видна дисперсия posterior.</p>
       <p data-i18n="live_swarm_p5"><b>Что влияет:</b> текущий набор наблюдений, веса частиц, случайность MC прогона. Стабильность картинки ← уверенность модели. Хаотичность ← высокая неопределённость.</p></div>
   </div>
@@ -1134,7 +1134,7 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
   <div class="card">
     <span class="card-tag" data-i18n="tag1">Вероятностный анализ</span>
     <div class="card-header">
-      <h3 data-i18n="chart1">1. Распределение T2 / T4 по Monte Carlo</h3>
+      <h3 data-i18n="chart1">1. Распределение 4-х этапов Сингулярности (Monte Carlo)</h3>
       <span class="tip">?<span class="tip-text" data-i18n="tip1">Показывает, где группируются 3000 прогонов Монте-Карло. Чем выше столбец — тем больше сценариев привели к T2/T4 в этом году.</span></span>
     </div>
     <div class="chart-container" id="c1"></div>
@@ -1165,8 +1165,8 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
   <div class="card">
     <span class="card-tag" data-i18n="tag3">Кумулятивная</span>
     <div class="card-header">
-      <h3 data-i18n="chart3">2. Накопленная вероятность T2 / T4</h3>
-      <span class="tip">?<span class="tip-text" data-i18n="tip3">P(AGI &lt;= X) — шанс, что AGI появится не позднее, чем через X лет. Если кривая круто поднимается — быстрый переход от «почти нет» к «почти точно». Плоская часть — затор (data wall, регуляция, энергетика).</span></span>
+      <h3 data-i18n="chart3">2. Накопленная вероятность (Cumulative PDF)</h3>
+      <span class="tip">?<span class="tip-text" data-i18n="tip3">P(этап ≤ X лет) — вероятность, что этап T1/T2/T3/T4 достигнут не позднее года по оси X. Для каждого из четырёх этапов своя кривая: чем круче подъём, тем резче переход от «маловероятно» к «почти наверняка». Плоская часть — затор (data wall, регулирование, энергетика).</span></span>
     </div>
     <div class="chart-container" id="c3"></div>
   </div>
@@ -1175,8 +1175,8 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
   <div class="card">
     <span class="card-tag" style="background:rgba(6,182,212,.15);color:var(--cyan)" data-i18n="tag5">Чувствительность</span>
     <div class="card-header">
-      <h3 data-i18n="chart5">3. Карта чувствительности (Intel × Agentic)</h3>
-      <span class="tip">?<span class="tip-text" data-i18n="tip5">Тепловая карта: оси — параметры Intelligence и Agentic последнего наблюдения. Цвет — медианный год AGI. Показывает, какой параметр доминирует в прогнозе.</span></span>
+      <h3 data-i18n="chart5">3. Чувствительность срока T3 к бенчмаркам (ARC-AGI × SWE-bench)</h3>
+      <span class="tip">?<span class="tip-text" data-i18n="tip5">Тепловая карта: по вертикали — уровень ARC-AGI, по горизонтали — уровень SWE-bench. Цвет ячейки — медианное число лет до T3 при таком сочетании бенчмарков. Показывает, какой из них сильнее двигает срок.</span></span>
     </div>
     <div class="chart-container" id="c5"></div>
   </div>
@@ -1363,7 +1363,7 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
 <footer>
   <a href="https://github.com/MunchausenGrup/singularity-forecaster" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">GitHub</a>
   &nbsp;|&nbsp;
-  Singularity Forecaster v4 | Particle Filter | <span data-i18n="footer_note">Data is estimated</span>
+  Singularity Forecaster v5.4 | Particle Filter | <span data-i18n="footer_note">Data is estimated</span>
 </footer>
 
 <!-- ===== OVERLAY ===== -->
