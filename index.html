@@ -281,11 +281,11 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
     <div class="logo"><span class="logo-infinity">∞</span></div>
     <div>
       <h1 id="hdr_title" data-i18n="hdr_title">Singularity <span style="color:var(--accent)">Forecaster</span></h1>
-      <div class="subtitle" id="hdr_sub" data-i18n="hdr_sub">v4 — Четыре стадии отлучения</div>
+      <div class="subtitle" id="hdr_sub" data-i18n="hdr_sub">v5.4 — Четыре стадии отлучения</div>
     </div>
   </div>
     <div class="header-right">
-      <div class="version" id="version">v4</div>
+      <div class="version" id="version">v5.4</div>
     <div class="lang-toggle">
       <button class="lang-btn active" id="lang_ru" onclick="setLang('ru')">RU</button>
       <button class="lang-btn" id="lang_en" onclick="setLang('en')">EN</button>
@@ -918,7 +918,7 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
   <div class="desc-card">
     <span class="card-tag" style="background:rgba(88,166,255,.15);color:var(--accent)">Swarm Learning</span>
     <div class="desc-body">
-      <p data-i18n="swarm_learn_p1">Интерактивная визуализация байесовского обучения в реальном времени. Каждая точка — гипотеза о мире (частица): скорость роста железа <em>hw_months</em> и потолок агентности <em>agency_ceiling</em>.</p>
+      <p data-i18n="swarm_learn_p1">Интерактивная визуализация обновления весов частиц в реальном времени. Каждая точка — гипотеза о мире (частица): скорость роста железа <em>hw_months</em> и потолок агентности <em>agency_ceiling</em>.</p>
       <p data-i18n="swarm_learn_p2"><b>Режим «Обучение» (Learn):</b> ползунок прикладывает наблюдения бенчмарков одно за другим. При каждом наблюдении пересчитываются веса:</p>
       <div class="formula">log w<sub>i</sub> &prop; &minus;0.5 &times; ((I<sub>obs</sub> &minus; R<sub>i</sub>)/&sigma;)<sup>2</sup> &minus; 0.5 &times; ((A<sub>obs</sub> &minus; Ag<sub>i</sub>)/&sigma;)<sup>2</sup></div>
       <p data-i18n="swarm_learn_p3">где R<sub>i</sub> и Ag<sub>i</sub> — предсказания частицы i на год наблюдения, &sigma; — нешумящее правдоподобие. Частицы, чьи предсказания далеки от наблюдения, экспоненциально теряют вес.</p>
@@ -984,7 +984,7 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
       <p data-i18n="hist_p2"><b>Ключевое уравнение:</b> каждый прогон выбирается из весов частиц (systematic resampling), затем симулируется полная траектория до 2068:</p>
       <div class="formula">cap(t) = min(R(t), Ag(t)), где R(t) = f(log FLOPs(t)), Ag(t) = g(log FLOPs(t))</div>
       <p data-i18n="hist_p3"><b>Пик гистограммы</b> = наиболее вероятный год. Широкое распределение = высокая неопределённость. Бимодальность = два конкурирующих сценария (например, «быстрый прорыв» vs «стагнация»).</p>
-      <p data-i18n="hist_p4"><b>Что сдвигает гистограмму:</b> новые наблюдения бенчмарков (через байесовское обновление весов), параметры Expert Sandbox (пороги RSI, парадигмы, потолки), количество частиц.</p></div>
+      <p data-i18n="hist_p4"><b>Что сдвигает гистограмму:</b> новые наблюдения бенчмарков (через обновление весов частиц), параметры Expert Sandbox (пороги RSI, парадигмы, потолки), количество частиц.</p></div>
   </div>
 
   <!-- ROW 4: Кумулятивная (описание | график) -->
@@ -1131,11 +1131,11 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
 <div style="padding:0 32px;max-width:1100px;margin:0 auto;width:100%">
   <div class="about" id="aboutSection">
     <h2 data-i18n="about_title">О модели v4</h2>
-    <p data-i18n="about_intro">Модель v4 использует байесовский частичный фильтр (Bayesian Particle Filter) для калибровки прогноза на реальных данных бенчмарков (ARC-AGI, SWE-bench, Arena Elo). Каждая частица — это гипотеза о будущем: скорость роста hardware, алгоритмов и потолок агентности. Наблюдения обновляют веса частиц через правдоподобие, а маловероятные гипотезы отмирают при ресэмплинге. Панель Expert Sandbox позволяет настраивать 30+ параметров модели и проверять гипотезы о будущем в реальном времени.</p>
+    <p data-i18n="about_intro">Модель v4 использует частичный фильтр частиц (Particle Filter) для калибровки прогноза на реальных данных бенчмарков (ARC-AGI, SWE-bench, Arena Elo). Каждая частица — это гипотеза о будущем: скорость роста hardware, алгоритмов и потолок агентности. Наблюдения обновляют веса частиц через правдоподобие, а маловероятные гипотезы отмирают при ресэмплинге. Панель Expert Sandbox позволяет настраивать 30+ параметров модели и проверять гипотезы о будущем в реальном времени.</p>
     <div class="sec-label" data-i18n="defs_label_arch">Архитектура модели</div>
     <div class="fgrid">
       <div class="fc">
-        <h4 data-i18n="arch_tracker_title">Байесовский трекер</h4>
+        <h4 data-i18n="arch_tracker_title">Фильтр частиц</h4>
         <p data-i18n="arch_tracker_desc">1000 частиц с настраиваемыми априорными распределениями: hw_months, algo_months, agency_ceiling (mean/std через Expert Sandbox). Каждое наблюдение бенчмарков (ARC-AGI, SWE-bench, Arena Elo) обновляет веса через гауссово правдоподобие. ESS-ресэмплинг предотвращает вырождение. Поддержка трёх World Models: Cascade, Hard Wall, Slow Takeoff.</p>
       </div>
       <div class="fc">
@@ -1198,17 +1198,15 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
 </div>
 
 <footer>
-  <a href="https://github.com/slavabelik79/singularity-forecaster" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">GitHub</a>
+  <a href="https://github.com/MunchausenGrup/singularity-forecaster" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">GitHub</a>
   &nbsp;|&nbsp;
-  <a href="https://t.me/slavabelik" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">Telegram</a>
-  &nbsp;|&nbsp;
-  Singularity Forecaster v4 | Bayesian Particle Filter | <span data-i18n="footer_note">Data is estimated</span>
+  Singularity Forecaster v4 | Particle Filter | <span data-i18n="footer_note">Data is estimated</span>
 </footer>
 
 <!-- ===== OVERLAY ===== -->
 <div class="overlay" id="overlay">
   <div class="spinner"></div>
-  <p id="overlayText" data-i18n="loading">Running Bayesian v3 forecast…</p>
+  <p id="overlayText" data-i18n="loading">Running particle-filter forecast…</p>
   <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
 </div>
 

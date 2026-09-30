@@ -59,10 +59,10 @@ for (const yr of [2025, 2026, 2026.74, 2030, 2040]) {
 }
 
 console.log('\n=== 3. FORECAST PATH SEED-SENSITIVE & REPRODUCIBLE ===');
-G.setSeed(7); const tA = new G.BayesianTracker(300); for (const o of hist) tA.observeRealData(o.year, o); const mA = tA.runMonteCarloForecast(200);
-G.setSeed(7); const tB = new G.BayesianTracker(300); for (const o of hist) tB.observeRealData(o.year, o); const mB = tB.runMonteCarloForecast(200);
+G.setSeed(7); const tA = new G.ParticleFilterTracker(300); for (const o of hist) tA.observeRealData(o.year, o); const mA = tA.runMonteCarloForecast(200);
+G.setSeed(7); const tB = new G.ParticleFilterTracker(300); for (const o of hist) tB.observeRealData(o.year, o); const mB = tB.runMonteCarloForecast(200);
 check('same seed -> identical forecast', JSON.stringify(mA.t3Years) === JSON.stringify(mB.t3Years));
-G.setSeed(8); const tC = new G.BayesianTracker(300); for (const o of hist) tC.observeRealData(o.year, o); const mC = tC.runMonteCarloForecast(200);
+G.setSeed(8); const tC = new G.ParticleFilterTracker(300); for (const o of hist) tC.observeRealData(o.year, o); const mC = tC.runMonteCarloForecast(200);
 check('different seed -> different forecast', JSON.stringify(mA.t3Years) !== JSON.stringify(mC.t3Years));
 
 console.log('\n=== 4. T4 PHYSICAL GATE IS REACHABLE (the real bug fixed) ===');
@@ -72,7 +72,7 @@ check('DR < 0.9 below the gate E=4', G.computeDependency(1.0, 4.0, cfg.EXPERT) <
 
 console.log('\n=== 5. T3 IS AN INFORMATIVE LEADING INDICATOR OF T4 ===');
 G.setSeed(2024);
-const T = new G.BayesianTracker(1000); for (const o of hist) T.observeRealData(o.year, o);
+const T = new G.ParticleFilterTracker(1000); for (const o of hist) T.observeRealData(o.year, o);
 const mc = T.runMonteCarloForecast(1000);
 const f1 = fin(mc.t1Years), f2 = fin(mc.t2Years), f3 = fin(mc.t3Years), f4 = fin(mc.t4Years);
 console.log(`  t1 median ${P(f1, 50).toFixed(2)}y   t2 median ${P(f2, 50).toFixed(2)}y   t3 median ${P(f3, 50).toFixed(2)}y   t4 median ${P(f4, 50).toFixed(2)}y`);
@@ -81,7 +81,7 @@ check('T3 leads T4 by a material margin', lead > 2, `lead time = ${lead.toFixed(
 // T4 implies T3 is the correct causal ordering; T3-only must exist for at least one hypothesis.
 let t3onlyFound = false;
 for (const wm of ['hard_wall', 'resilient_civ']) {
-  G.setSeed(11); const t = new G.BayesianTracker(400);
+  G.setSeed(11); const t = new G.ParticleFilterTracker(400);
   t.particles.forEach(p => { p.world_model = wm; }); t.weights.fill(1 / 400);
   for (const o of hist) t.observeRealData(o.year, o);
   const m = t.runMonteCarloForecast(400);
@@ -113,7 +113,7 @@ const cases = [
 ];
 const essList = [];
 for (const [n, obs] of cases) {
-  G.setSeed(1); const t = new G.BayesianTracker(400);
+  G.setSeed(1); const t = new G.ParticleFilterTracker(400);
   t.observeRealData(2025.0, obs);
   const ess = 1 / t.weights.reduce((a, b) => a + b * b, 0);
   essList.push(ess);
@@ -125,7 +125,7 @@ check('more benchmarks => more concentrated posterior (ESS falls)', essList[2] <
 console.log('\n=== 9. DISCRIMINATION BETWEEN WORLD MODELS ===');
 const rows = [];
 for (const wm of ['cascade', 'hard_wall', 'slow_takeoff', 'resilient_civ']) {
-  G.setSeed(5); const t = new G.BayesianTracker(400);
+  G.setSeed(5); const t = new G.ParticleFilterTracker(400);
   t.particles.forEach(p => { p.world_model = wm; }); t.weights.fill(1 / 400);
   for (const o of hist) t.observeRealData(o.year, o);
   const m = t.runMonteCarloForecast(300);
@@ -137,7 +137,7 @@ const t4rates = rows.map(r => parseFloat(r[3]));
 check('P(T4) differs across hypotheses', Math.max(...t4rates) - Math.min(...t4rates) > 20, 'filter discriminates');
 
 console.log('\n=== 10. ALL PUBLIC METHODS WORK ===');
-G.setSeed(3); const T2 = new G.BayesianTracker(600); for (const o of hist) T2.observeRealData(o.year, o);
+G.setSeed(3); const T2 = new G.ParticleFilterTracker(600); for (const o of hist) T2.observeRealData(o.year, o);
 try { const s = T2.runScenarioOverlay(15); check('runScenarioOverlay', s.length === 15 && s[0].years.length > 0, `${s.length} scenarios`); } catch (e) { check('runScenarioOverlay', false, e.message); }
 try { const d = T2.runDecomposition(); const fin2 = d.hwComp.every(isFinite) && d.algoComp.every(isFinite) && d.rsiComp.every(isFinite) && d.paradigmComp.every(isFinite); check('runDecomposition', fin2 && d.years.length > 0, `${d.years.length} steps, all finite`); } catch (e) { check('runDecomposition', false, e.message); }
 try { const s = T2.getSummary(); check('getSummary', isFinite(s.agencyCeiling), `agencyCeiling=${s.agencyCeiling.toFixed(2)}`); } catch (e) { check('getSummary', false, e.message); }

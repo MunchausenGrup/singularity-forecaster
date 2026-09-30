@@ -374,7 +374,7 @@ function getNumericObservables(r10, a10, e10, expertCfg) {
 }
 
 // ============================================================================
-// 5. MATH & PHYSICS ENGINE (Bayesian Particle Filter)
+// 5. MATH & PHYSICS ENGINE (Particle Filter)
 // ============================================================================
 
 const DEFAULT_PARTICLES = 1000;
@@ -439,7 +439,7 @@ function calculateRSI(S, C, expertCfg) {
 //   Engine A  simulateToYear()             -> fed the particle-filter LIKELIHOOD
 //   Engine B  runMonteCarloForecast() loop -> produced the PUBLISHED FORECAST
 // They had drifted apart (different paradigm-shift logic, different shock
-// handling, different embodiment integration). That made the Bayesian update
+// handling, different embodiment integration). That made the posterior update
 // calibrate parameters against a different physical model than the one that
 // produced the answer — the posterior was meaningless.
 //
@@ -529,9 +529,21 @@ function stepDynamics(st, cfg, dt, stochastic, particle) {
 
   // ---- Cultural shock (anti-AI backlash) ----------------------------------
   // Bernoulli event at rate (socialTension*0.5) per year.
+  //
+  // This used to read:
+  //     const shockDraw = stochastic ? rnd() : shockRate;
+  //     if (socialTension > 0.4 && shockDraw < shockRate) { ... }
+  // which is unsatisfiable when stochastic is false — the test reduces to
+  // `shockRate < shockRate` — so the likelihood path could never see a cultural
+  // shock while the forecast path could. That contradicted the invariant
+  // stated lower down ("both paths sample the SAME Bernoulli event from the
+  // SAME kernel; determinism comes from the caller seeding the stream"), and it
+  // made this the only event in the function gated on `stochastic`; every
+  // sibling below (data wall, alignment incident, GPU bubble, AI winter,
+  // geopolitics, paradigm shift) samples unconditionally. simulateToYear()
+  // re-seeds per observation, so drawing here is reproducible, not random.
   const shockRate = (socialTension * 0.5) * dt;
-  const shockDraw = stochastic ? rnd() : shockRate;
-  if (socialTension > 0.4 && shockDraw < shockRate) {
+  if (socialTension > 0.4 && rnd() < shockRate) {
     st.IL *= 0.3;
     st.IC *= 0.1;
     st.stateIntervention = true;
@@ -759,7 +771,7 @@ function readCapabilities(st, cfg) {
 // Likelihood-side entry point.
 //
 // IMPORTANT: this calls the SAME stepDynamics() as the forecast. To keep the
-// Bayesian update deterministic (a particle's predicted capabilities must not
+// Posterior update deterministic (a particle's predicted capabilities must not
 // change between repeated calls with the same observation), the RNG stream is
 // re-seeded from (seed, targetYear) at the start of every evaluation. The
 // forecast path does NOT reseed, so it explores the full shock distribution.
@@ -777,7 +789,7 @@ function simulateToYear(particle, targetYear, cfg) {
   return readCapabilities(st, cfg);
 }
 
-class BayesianTracker {
+class ParticleFilterTracker {
   constructor(nParticles) {
     this.n = nParticles || DEFAULT_PARTICLES;
     this.cfg = createConfig();
@@ -1250,7 +1262,7 @@ class BayesianTracker {
 
 function getTracker() {
   if (!coreTracker) {
-    coreTracker = new BayesianTracker(1000);
+    coreTracker = new ParticleFilterTracker(1000);
     REAL_BENCHMARK_HISTORY.forEach(d => coreTracker.observeRealData(d.year, d));
     userObservations.forEach(d => coreTracker.observeRealData(d.year, d));
   }
@@ -1267,7 +1279,7 @@ function runBacktest(trainEnd, kPred) {
   const trainData = data.slice(0, trainEnd);
   const testData = data.slice(trainEnd, trainEnd + kPred);
 
-  const btTracker = new BayesianTracker(1000);
+  const btTracker = new ParticleFilterTracker(1000);
   trainData.forEach(d => btTracker.observeRealData(d.year, d));
 
   // Подготавливаем кумулятивные веса для правильного сэмплинга (взвешенный выбор)
@@ -1381,7 +1393,7 @@ function addObservation() {
     userObservations.push(newObs);
   }
   
-  coreTracker = new BayesianTracker(DEFAULT_PARTICLES);
+  coreTracker = new ParticleFilterTracker(DEFAULT_PARTICLES);
   REAL_BENCHMARK_HISTORY.forEach(d => coreTracker.observeRealData(d.year, d));
   userObservations.forEach(d => coreTracker.observeRealData(d.year, d));
   
@@ -1467,7 +1479,7 @@ async function runSimulation() {
   if (overlay) overlay.classList.add('show');
 
   const textEl = document.getElementById('overlayText');
-  if (textEl) textEl.textContent = 'Байесовское прогнозирование v4...';
+  if (textEl) textEl.textContent = 'Фильтр частиц: прогноз v4...';
 
   const rnEl = document.getElementById('rN');
   const n = rnEl ? +rnEl.value : 3000; // Фолбэк на 3000, если инпута нет
@@ -1963,7 +1975,7 @@ const LANG = {
     defs_label:'Архитектура и контуры',
     defs_label_arch:'Топология латентного пространства',
     defs_label_contours:'Пороги модели',
-    arch_tracker_title:'Байесовский вывод (Particle Filter)',
+    arch_tracker_title:'Фильтр частиц (Particle Filter)',
     arch_tracker_desc:'Ансамбль из N=1000 частиц. При поступлении вектора наблюдений (бенчмарков) веса гипотез обновляются через гауссово правдоподобие. Chatbot Arena Elo теперь напрямую калибрует параметр P (Persuasion) — убедительность ИИ, отсекая маловероятные сценарии развития.',
     arch_dims_title:'Когнитивный и Социотехнический слои',
     arch_dims_desc:'Базис: Reasoning (R), World Modeling (W), Agency (A), Embodiment (E). Над ними надстроен социотехнический слой: Persuasion (P) — убедительность, Delegation Pressure (DP) — давление делегирования, Institutional Legitimacy (IL) — легализация, Institutional Capture (IC) — захват институтов, и Dependency Ratio (DR) — зависимость цивилизации.',
@@ -2100,7 +2112,7 @@ const LANG = {
     defs_label:'Architecture and Contours',
     defs_label_arch:'Latent Space Topology',
     defs_label_contours:'Dynamic Contours of the Model',
-    arch_tracker_title:'Bayesian Inference (Particle Filter)',
+    arch_tracker_title:'Particle Filter Inference',
     arch_tracker_desc:'An ensemble of N=1000 particles. Upon receiving benchmark observations, hypothesis weights update via Gaussian likelihood. Chatbot Arena Elo now directly calibrates the P (Persuasion) parameter, pruning unlikely scenarios.',
     arch_dims_title:'Cognitive and Sociotechnical Layers',
     arch_dims_desc:'Base space: Reasoning (R), World Modeling (W), Agency (A), Embodiment (E). Layered above is the sociotechnical framework: Persuasion (P), Delegation Pressure (DP), Institutional Legitimacy (IL), Institutional Capture (IC), and Dependency Ratio (DR).',
@@ -2227,7 +2239,7 @@ function swarmComputeAGIYears(tracker) {
 }
 
 function swarmBuildTracker(idx) {
-  const t = new BayesianTracker(1000);
+  const t = new ParticleFilterTracker(1000);
   for (let i = 0; i < idx && i < REAL_BENCHMARK_HISTORY.length; i++) {
     t.observeRealData(REAL_BENCHMARK_HISTORY[i].year, REAL_BENCHMARK_HISTORY[i]);
   }
@@ -3082,6 +3094,14 @@ function setLang(lang) {
     const key = el.getAttribute('data-i18n');
     if (t[key]) el.innerHTML = t[key];
   });
+  // The version badge is derived from hdr_sub rather than carrying its own
+  // string. It used to be a hardcoded "v4" in the HTML with no data-i18n key,
+  // so the header rendered "v4" next to "v5.4 — …" and neither language switch
+  // nor a version bump could ever update it. Parsing the badge out of the one
+  // string that is already versioned makes a half-applied bump impossible.
+  const verMatch = /^v[\d.]+/.exec(t.hdr_sub || '');
+  const badge = document.getElementById('version');
+  if (verMatch && badge) badge.textContent = verMatch[0];
   // Re-draw canvases with new language
   if (typeof swarmDraw === 'function') swarmDraw();
   if (typeof ehDraw === 'function') ehDraw();
@@ -3505,7 +3525,7 @@ window.uiRunBacktest = uiRunBacktest;
 
 // ---- EXPORT FOR TESTING / HEADLESS ----
 globalThis.__SINGULARITY_CORE__ = {
-  BayesianTracker,
+  ParticleFilterTracker,
   simulateToYear,
   getNumericObservables,
   createConfig,
