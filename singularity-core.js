@@ -2722,15 +2722,13 @@ function swarmStopLive() {
 let liveSwarm = { tracker:null, timerT1:null, timerT2:null, timerT3:null, timerT4:null };
 
 function liveSwarmInit() {
-  // Init all 4 canvases
+  // Validate the 4 canvases; sizing now happens per frame inside drawLiveSwarm
+  // via syncCanvasToDisplay, so sizing them here would re-freeze any canvas
+  // that is not laid out yet.
   ['liveSwarmT1','liveSwarmT2','liveSwarmT3','liveSwarmT4'].forEach(id => {
     const c = document.getElementById(id);
     if (!c) return;
-    const ctx = c.getContext('2d');
-    if (!ctx) return;
-    const dpr = window.devicePixelRatio || 1;
-    c.width = c.offsetWidth * dpr; c.height = c.offsetHeight * dpr;
-    ctx.scale(dpr, dpr);
+    if (!c.getContext('2d')) return;
   });
 
   // Use same tracker as main forecast
@@ -2747,9 +2745,12 @@ function liveSwarmInit() {
 function drawLiveSwarm(canvasId, statsId, yearsKey, colorKey, mc) {
   const c = document.getElementById(canvasId);
   if (!c || !liveSwarm.tracker) return;
-  const ctx = c.getContext('2d');
-  if (!ctx) return;
-  const w = c.offsetWidth, h = c.offsetHeight;
+  // Self-healing sizing, same reason as swarmDraw(): these four canvases are
+  // width:100%, and a backing store fixed once at startup leaves them stale on
+  // resize and permanently blank if they were not laid out at that moment.
+  const s = syncCanvasToDisplay(c);
+  if (!s) return;                       // no layout yet — retry next frame
+  const ctx = s.ctx, w = s.w, h = s.h;
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0, 0, w, h);
 
@@ -2906,22 +2907,24 @@ function yearToRadius(year, maxR) {
 }
 
 function ehInitCanvas() {
+  // Sizing is handled in ehDraw() via syncCanvasToDisplay, which runs on every
+  // frame; doing it here too would just re-freeze the canvas if it is not laid
+  // out yet. Keep this as a validity check only.
   const c = document.getElementById('eventHorizonCanvas');
   if (!c) return;
-  const dpr = window.devicePixelRatio || 1;
-  c.width = c.offsetWidth * dpr;
-  c.height = c.offsetHeight * dpr;
-  const ctx = c.getContext('2d');
-  if (!ctx) return;
-  ctx.scale(dpr, dpr);
+  if (!c.getContext('2d')) return;
 }
 
 function ehDraw() {
   const c = document.getElementById('eventHorizonCanvas');
   if (!c) return;
-  const ctx = c.getContext('2d');
-  if (!ctx) return;
-  const w = c.offsetWidth, h = c.offsetHeight;
+  // Same self-healing sizing as swarmDraw(): the backing store is re-derived
+  // from the current css box every frame instead of being set once at init,
+  // so a canvas that was 0x0 at startup recovers on its own and a window
+  // resize does not leave it blurry or clipped.
+  const s = syncCanvasToDisplay(c);
+  if (!s) return;                       // no layout yet — retry next frame
+  const ctx = s.ctx, w = s.w, h = s.h;
   const cx = w / 2, cy = h / 2;
   const maxR = Math.min(w, h) / 2 - 20;
 
