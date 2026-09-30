@@ -190,6 +190,107 @@ body{font-family:var(--font);background:var(--bg-primary);color:var(--text-prima
 @media(max-width:1100px){ .expert-grid{grid-template-columns:repeat(3,1fr)} }
 @media(max-width:800px){ .expert-grid{grid-template-columns:repeat(2,1fr)} }
 @media(max-width:500px){ .expert-grid{grid-template-columns:1fr} }
+
+/* ==========================================================================
+   MOBILE
+   Appended after every layout rule above on purpose: the desktop defaults are
+   all defined earlier in this file, so the overrides have to win on source
+   order for equal specificity, and a media query at the top would lose to them.
+
+   The page is dense by design (four headline medians, a 30-slider sandbox,
+   six-column benchmark table). Rather than hide anything, everything that
+   breaks at narrow widths is reflowed: the two-column card grid collapses to
+   one, fixed 32px gutters become 12px, and the sandbox header — which now
+   carries the preset buttons — is allowed to wrap instead of overflowing.
+   ========================================================================== */
+@media(max-width:820px){
+  /* Gutters. 32px on each side of a 360px viewport leaves 296px of content,
+     which is what forces the horizontal overflow. */
+  .header{padding:14px 16px}
+  .controls{padding:12px 16px;gap:12px}
+  .grid{padding:12px 16px;gap:12px}
+  .card{padding:14px}
+  #expertPanel{padding:14px 16px}
+  #expertPanel.collapsed{padding:0 16px}
+  #dataPanel,#obsMetrics{padding:10px 16px}
+  #backtestResult{margin:8px 16px}
+
+  /* Header stacks so the version badge and RU/EN toggle get their own row
+     instead of crushing the title on a narrow screen. */
+  .header-left{gap:10px}
+  .logo{width:30px;height:30px;border-radius:8px}
+  .logo-infinity{font-size:1.15rem}
+  .header h1{font-size:1.05rem}
+  .header .subtitle{font-size:.7rem}
+
+  /* Range sliders are the primary control here; 140px is unusable with a
+     thumb on touch. Let them take the full row instead. */
+  .control-group input[type=range]{width:100%;min-width:140px}
+  .control-group{flex:1 1 150px;min-width:140px}
+  .controls-right{margin-left:0;width:100%}
+  .controls .btn{flex:1 1 auto;justify-content:center}
+
+  /* The collapsed sandbox header holds six compact buttons. Wrapping keeps
+     them all reachable; without this they run off the right edge. */
+  .expert-toggle{flex-wrap:wrap;gap:8px;height:auto}
+  .expert-toggle-label{margin-right:auto}
+  .expert-toggle-btns{margin-left:0;margin-right:0;width:100%;order:3}
+  .expert-arrow{margin-left:auto}
+  .expert-toggle-btn{padding:6px 12px;font-size:.72rem}
+
+  /* Data table: 6 columns of numbers cannot fit a phone. Scroll it sideways
+     inside its own container rather than letting the page scroll. */
+  #dataPanelContent{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #dataPanel table{width:100%;min-width:520px;font-size:.72rem}
+  #dataPanel th,#dataPanel td{padding:6px 8px;white-space:nowrap}
+
+  /* Canvases are sized by fixed pixel heights in INLINE styles on the markup
+     (min-height:440px on .chart-container, height:420px on the inner wrapper).
+     An inline style beats a stylesheet rule of equal specificity, so these
+     overrides need !important — without it the phone keeps the desktop plot
+     height and the wrapper's own background makes it look blank. */
+  .chart-container{min-height:300px!important}
+  .chart-container>div[style*="height"] {height:300px!important}
+  #swarmCanvas,#eventHorizonCanvas{height:300px!important}
+  /* The four liveSwarm charts sit in an inline 2-column grid; one column at
+     phone width, and a shorter stack so all four are visible without a long
+     scroll. */
+  .chart-container[style*="grid-template-columns"]{grid-template-columns:1fr!important;min-height:0!important}
+  .chart-container[style*="grid-template-columns"]>div{min-height:190px}
+}
+
+@media(max-width:520px){
+  /* Status bar: auto-fit minmax(150px) gives two columns here, which makes
+     the T1..T4 numbers wrap awkwardly. One per row reads better and keeps
+     the label legible. */
+  .status-bar{grid-template-columns:1fr 1fr}
+  .status-item{padding:12px 10px}
+  .status-value{font-size:.95rem}
+  .status-label{font-size:.58rem;letter-spacing:.4px}
+
+  .grid{grid-template-columns:1fr}
+  .defs-grid{grid-template-columns:1fr}
+
+  /* Touch targets: 8px/5px vertical padding yields buttons under the 44px
+     guidance for a comfortable tap. */
+  .btn{padding:11px 18px;font-size:.82rem;min-height:44px}
+  .btn-sm{padding:9px 14px;min-height:40px}
+  .lang-btn{padding:9px 16px;min-height:38px}
+  .expert-toggle{min-height:48px}
+  .expert-param input[type=range]{height:24px}
+
+  /* Long model names in the benchmark table must not stretch the layout. */
+  #dataPanel td{overflow:hidden;text-overflow:ellipsis;max-width:150px}
+}
+
+/* Coarse pointers get the larger tap targets regardless of width — a tablet
+   in landscape is wide but is still touched, not clicked. */
+@media(pointer:coarse){
+  .btn{min-height:44px}
+  .lang-btn{min-height:40px}
+  .expert-toggle-btn{min-height:40px}
+  .control-group input[type=range]{height:24px}
+}
 .expert-actions {
   display: flex;
   justify-content: flex-end;
