@@ -211,6 +211,39 @@ try { const s = T2.runScenarioOverlay(15); check('runScenarioOverlay', s.length 
 try { const d = T2.runDecomposition(); const fin2 = d.hwComp.every(isFinite) && d.algoComp.every(isFinite) && d.rsiComp.every(isFinite) && d.paradigmComp.every(isFinite); check('runDecomposition', fin2 && d.years.length > 0, `${d.years.length} steps, all finite`); } catch (e) { check('runDecomposition', false, e.message); }
 try { const s = T2.getSummary(); check('getSummary', isFinite(s.agencyCeiling), `agencyCeiling=${s.agencyCeiling.toFixed(2)}`); } catch (e) { check('getSummary', false, e.message); }
 
+
+// ---- R >> W gap: grounding must close it, not just assert it -------------
+// Before groundingRate, stateE advanced only from compute, so R and W were
+// independent random walks and their ratio settled at 1.85-3.12 across the four
+// hypotheses and never closed -- the gap the model asserted and then required a
+// W-derived quantity to cross. groundingRate anchors part of new reasoning into
+// a world model, so the ratio must now be materially lower.
+{
+  const cfgG = G.createConfig();
+  const ratios = {};
+  for (const wm of ['cascade', 'slow_takeoff', 'resilient_civ', 'hard_wall']) {
+    const partG = { hw_months: 6.0, algo_months: 4.5, agency_ceiling: 12.0,
+                    embodiment_ceiling: 6.0, world_model: wm,
+                    rsi_efficiency: 1.2, veto_strength: 0.5 };
+    const stG = G.createSimState(partG, cfgG);
+    let lastR = 0, lastW = 1;
+    for (let step = 0; step < 12 * 30; step++) {
+      const v = G.stepDynamics(stG, cfgG, 1 / 12, false, partG);
+      if (step > 0) { lastR = v.R; lastW = Math.max(1e-9, v.W); }
+      if (stG.yT4 !== null) break;
+    }
+    ratios[wm] = lastR / lastW;
+    console.log(`  ${wm}: R/W = ${ratios[wm].toFixed(2)}`);
+  }
+  const worst = Math.max(...Object.values(ratios));
+  check('R/W gap narrows below 2.5 in every hypothesis', worst < 2.5,
+    `worst R/W = ${worst.toFixed(2)} (was 3.12 with no grounding mechanism)`);
+  // And grounding must not make embodiment trivially easy: T4 still needs
+  // embodimentT4Requirement, and a pure subsidy would have blown past it.
+  check('T4 still requires embodiment to be built', cfgG.EXPERT.embodimentT4Requirement > 0,
+    'embodiment threshold is a real requirement, not zero');
+}
+
 console.log('\n' + '='.repeat(60));
 console.log(fails === 0 ? 'ALL CHECKS PASSED' : `${fails} CHECK(S) FAILED`);
 process.exit(fails === 0 ? 0 : 1);

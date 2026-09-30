@@ -237,6 +237,29 @@ const EXPERT_CONFIG = {
   // 0.0 / 0.4 / 0.6, measured.
   humanAgencyCaptureGate: 0.55,       // ниже этой доли IC не растёт
   humanAgencyInitial: 0.85,           // начальная доля решений за людьми
+
+  // --- GROUNDING (how reasoning becomes embodiment) ---
+  // The R >> W gap was asserted, not closed. R and W are independent
+  // log-diffusion states with separate ceilings and separate growth terms, and
+  // nothing transferred capability between them: st.stateE advanced only as
+  // 0.5*dCompute + 0.2*(A/ceilingA)*dCompute, i.e. purely from compute. A model
+  // could therefore reason arbitrarily far ahead of any physical grounding with
+  // no consequence, while T4 gates on embodiment, which gates on a world model.
+  //
+  // groundingRate is the share of new reasoning that gets ANCHORED -- turned
+  // into a usable model of the world rather than staying inference. It is the
+  // acquisition mechanism the gap was missing: without it the ratio R/W is a
+  // property of two unrelated random walks.
+  //
+  // groundingRateMax bounds how much can be absorbed at once, so a
+  // capability jump outruns its grounding -- the gap can open, and stays open
+  // while grounding catches up. groundingEfficiency is the fraction of anchored
+  // reasoning that actually reaches the physical world, lost to sensors,
+  // energy, materials and experiments that are rate-limited regardless.
+  groundingRate: 0.22,                // доля reasoning, уходящая в заземление
+  groundingRateMax: 0.9,              // предел поглощения: R может обогнать W
+  groundingEfficiency: 0.35,           // доля заземления, доходящая до материи
+  groundingLabourCost: 0.45,          // доля выигрыша в A, съедаемая заземлением
   // --- OBSERVATION NOISE MODE ---
   observationSigmaMode: 'global',  // 'global' = BENCHMARK_SIGMAS; 'perPoint' = локальные *_sigma из точек данных
   // --- PLATEAU SCENARIO (затяжной T1 без прогресса) ---
@@ -1008,7 +1031,33 @@ function stepDynamics(st, cfg, dt, stochastic, particle) {
 
   const dCompute = (hwDelta + algoDelta) * dt;
   st.stateR += dCompute;
-  st.stateA += 0.4 * dCompute + (0.3 * (R / st.ceilingR) + 0.3 * (W / st.ceilingWM)) * Math.max(0, dCompute);
+  // ---- Grounding: the acquisition mechanism for the R >> W gap -------------
+  // Previously stateE advanced only from compute, so reasoning outran physical
+  // grounding with no cost and no consequence. Measured before this change,
+  // R/W settled at 1.85-3.12 across the four hypotheses and never closed.
+  //
+  // Part of new reasoning is now ANCHORED into a world model. The anchoring is
+  // bounded (groundingRateMax) so reasoning can still outrun it -- the gap is
+  // allowed to open, and it closes only as fast as grounding absorbs -- and
+  // only groundingEfficiency of it ever reaches matter, because sensors,
+  // energy and experiment throughput are rate-limited no matter how good the
+  // reasoning is.
+  const anchoring = Math.min(E.groundingRateMax,
+    E.groundingRate * (R / Math.max(1e-9, st.ceilingR))) * Math.max(0, dCompute);
+  st.stateW += anchoring;
+
+  st.stateE += 0.5 * dCompute + 0.2 * (A / st.ceilingA) * Math.max(0, dCompute)
+             + E.groundingEfficiency * anchoring;
+
+  // Anchoring is not free: it consumes capability that would otherwise have
+  // become agency. Without this cost the new term is a pure subsidy -- the gap
+  // would close while T3 got FASTER, which is an improvement on paper and a
+  // worse model, since the point of grounding is that it diverts effort away
+  // from getting things done.
+  const agencyLeak = E.groundingLabourCost * anchoring;
+  st.stateA += 0.4 * dCompute
+             + (0.3 * (R / st.ceilingR) + 0.3 * (W / st.ceilingWM)) * Math.max(0, dCompute)
+             - agencyLeak;
 
   // World Modeling: epistemically grounded, wet-lab rate limited
   const digitalGrounding = sigmoid(0.5 * (A - 5.0));
@@ -1017,7 +1066,6 @@ function stepDynamics(st, cfg, dt, stochastic, particle) {
   const dW_ideal = (0.6 * dCompute * epistemicGrounding) + (0.2 * (R / st.ceilingR)) * Math.max(0, dCompute);
   st.stateW += Math.min(dW_ideal, E.maxPhysicalExperimentRate * dt);
 
-  st.stateE += 0.5 * dCompute + 0.2 * (A / st.ceilingA) * Math.max(0, dCompute);
   st.roboticsFrontier += (EMBODIMENT_BUILD_BASE_SPEED + 0.15 * sigmoid(Emb - 4.5)) * dt;
 
   st.flopsLog += hwDelta * dt;
