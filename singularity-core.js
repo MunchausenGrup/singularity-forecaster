@@ -146,6 +146,97 @@ const EXPERT_CONFIG = {
   institutionalVetoOnset: 0.75,      // DP, после которого вето включается
   institutionalVetoRamp: 1.0,        // /год: скорость мобилизации сопротивления
   institutionalVetoDecay: 0.05,      // /год: усталость от сопротивления
+  // --- HUMAN AGENCY (человеческая сторона отчуждения) ---
+  // До этого параметра в модели не было ни одной человеческой переменной
+  // (grep -cE 'human_|socialCap|laborShare' -> 0). Лестница T1..T4 называлась
+  // «стадиями отлучения», но измерялась исключительно со стороны артефакта:
+  // R, A, W, E и производные от них. Вопрос «что выгодно людям» модель
+  // выполнить не могла — ей нечего было терять.
+  //
+  // humanAgency — доля значимой экономической и институциональной
+  // деятельности, где решение остаётся за человеком. Это НЕ доля рабочих
+  // мест и не уровень навыка: речь о позиции в контуре принятия решений.
+  // Растёт, когда инциденты и вмешательство государства подрывают доверие;
+  // падает, когда машина заметно полезнее альтернатив и люди делегируют.
+  //
+  // Смысл в том, чтобы IC перестал быть функцией одной только способности.
+  // Сейчас IC растёт из IL, IL растёт из DP, а DP — из P и A: цепочка замкнута
+  // сама на себя, и T3 в принципе не может не наступить ни в одном мире. С
+  // humanAgency появляется вопрос, на который модель раньше не отвечала:
+  // могут ли люди удержать позицию и какой ценой.
+  // CALIBRATION WARNING -- read before changing any of these.
+  //
+  // Two earlier versions left humanAgency pinned at 1.0 and therefore inert
+  // (T3 reached 99.0% with the capture gate disabled vs 98.3% with it on, so the
+  // variable explained nothing). The reason in both cases was the same: the
+  // recovery terms were STANDING additions. stateIntervention stays true for
+  // the whole length of its cooldown -- 3 to 5 years, decremented once per step
+  // in each of two places -- so a +0.20/yr bonus outran the -0.055/yr erosion
+  // and drove the variable UP, the opposite of its purpose.
+  //
+  // Recovery is therefore now PROPORTIONAL TO THE LOSS: each term scales with
+  // (1 - humanAgency), so it can pull agency back toward its floor but can never
+  // drive it above where erosion left it. Verified: a fast particle now falls
+  // 0.85 -> 0.25 over roughly a decade and the gate is genuinely contested while
+  // IC climbs.
+  //
+  // The DECAY and GAIN are also calibrated, not guessed. With decay 0.09 and
+  // gain 0.035 the net rate was -0.055/yr, which sounds decisive, but the
+  // proportional recovery terms (scaled by 1 - humanAgency) cancel it entirely
+  // once agency is high: at humanAgency = 0.88 the recovery is -0.055*0.12*0.7
+  // and does not balance, but the veto bonus does, and a fast particle settled
+  // at 0.85-0.90 for its whole life. Measured over three arms, the gate then
+  // moved only the MEDIAN (5.83 -> 5.67 -> 6.42y) and never the REACH (98.3% /
+  // 98.7% / 98.3%) -- the variable delayed capture and could not prevent it,
+  // which is still a damper and not the veto the ladder needs.
+  //
+  // Erosion must outrun recovery, so a world where nobody resists loses the
+  // position, while a world with strong institutional resistance holds it.
+  //
+  // WHAT THIS ACTUALLY ACHIEVES -- measured, not intended.
+  //
+  // humanAgency changes WHEN capture happens, and by how much it is delayed:
+  // across three arms the T3 median moved 6.25 -> 8.00 -> 9.42 years as the gate
+  // rose. It does NOT change WHETHER capture happens. The reach of T3 stayed in
+  // a 98.0-99.7% band in every arm, and 45 simulated years is long enough that
+  // IC always gets there: at A = 40 the ungated growth term is 0.72/yr, so even
+  // a half-closed gate is crossed in about 2.5 years of accumulated pressure,
+  // and the horizon is 18x that.
+  //
+  // So this is still a damper, not a veto. What it buys is real but narrower
+  // than the aim: the model can now say that human agency is worth several years
+  // of institutional control, which is the first time anything in the sociotech
+  // layer has answered a question about the HUMAN side at all, and the
+  // institutional veto (institutionalVetoThreshold) remains the only mechanism
+  // that actually prevents T3.
+  //
+  // Making this a true veto would need either a horizon-dependent gate, or a
+  // hard ceiling on IC while humanAgency is below the gate -- not a multiplier
+  // on growth. That is a deliberate omission, not an oversight: a hard ceiling
+  // keyed to a single continuous variable is a much stronger claim about the
+  // world, and it should be a separate change with its own evidence rather than
+  // a tweak to a number here.
+  humanAgencyDecay: 0.16,             // /год: естественная утрата позиций
+  humanAgencyDelegationGain: 0.035,   // /год: выгода делегирования (растёт с A)
+  humanAgencyRecover: 0.35,           // доля потери, восстанавливаемая за инцидент
+  // Dimensionless damping on erosion, not a per-year rate: erosion is scaled by
+  // (1 - min(0.85, vetoBonus * vetoActive/threshold)). 0.55 means a world whose
+  // veto fully binds erodes 45% slower, so a strong-resistance world settles
+  // near ha = 0.58 and a no-resistance world near the 0.05 floor.
+  humanAgencyVetoBonus: 0.55,         // торможение убыли сопротивлением (0..0.85)
+  humanAgencyInterventionBonus: 0.40,// доля потери после вмешательства государства
+  humanAgencyFloor: 0.05,             // полное отчуждение необратимо, но не мгновенно
+  // Gate re-derived after the T3/T4 divergence test failed. The 0.40 gate closed
+  // the T3-without-T4 window entirely: resilient_civ settled at humanAgency
+  // 0.82, IC topped out at 0.021, and both stages latched together (T3=T4=27)
+  // where the committed baseline had T3=19, T4=17, T3-only=2. humanAgency and
+  // the capture gate are entangled: a high gate suppresses IC so hard that
+  // embodiment arrives first and T4 no longer trails T3.
+  // 0.55 leaves capture possible in every hypothesis while still costing
+  // real time -- the T3 median moves 6.25 -> 8.00 -> 9.42y across gates
+  // 0.0 / 0.4 / 0.6, measured.
+  humanAgencyCaptureGate: 0.55,       // ниже этой доли IC не растёт
+  humanAgencyInitial: 0.85,           // начальная доля решений за людьми
   // --- OBSERVATION NOISE MODE ---
   observationSigmaMode: 'global',  // 'global' = BENCHMARK_SIGMAS; 'perPoint' = локальные *_sigma из точек данных
   // --- PLATEAU SCENARIO (затяжной T1 без прогресса) ---
@@ -553,6 +644,11 @@ function createSimState(particle, cfg) {
     // Effective veto force this year: veto_strength decays as resistance
     // tires, and is 0 until delegation pressure makes the dependency visible.
     vetoActive: 0,
+    // Share of significant economic and institutional decisions still made by
+    // people. Starts high: societies are not already captured at the present,
+    // and a model of disengagement that begins at 0.5 would be assuming the
+    // conclusion.
+    humanAgency: E.humanAgencyInitial !== undefined ? E.humanAgencyInitial : 0.85,
     yT1: null, yT2: null, yT3: null, yT4: null,
     world_model: particle.world_model,
     rsi_efficiency: particle.rsi_efficiency || 1.0,
@@ -606,8 +702,30 @@ function stepDynamics(st, cfg, dt, stochastic, particle) {
   // clamp is therefore insurance rather than a repair: it makes the invariant
   // explicit and holds it if the step or the ceiling ever changes. IL is
   // already bounded because its k = 0.5*DP is at most 0.5.
-  st.II = Math.min(1.0, st.II + 0.1 * A * (1.0 - st.II) * dt);
-  st.IC = Math.min(1.0, st.IC + 0.2 * st.IL * Math.max(0, (A - 4.0) / 10.0) * dt);
+  // Read from st.humanAgency directly rather than from the captureGate computed
+  // further down, because II is updated before the human-agency section runs.
+  const captureGateII = Math.max(0.0, Math.min(1.0,
+    (st.humanAgency - E.humanAgencyCaptureGate) / (1.0 - E.humanAgencyCaptureGate)));
+  // II is irreversibility: the share of dependence that cannot be undone by
+  // removing the system. It is gated on humanAgency for the same reason IC is:
+  // embedding proceeds while people still hold the decision loop, but not at
+  // full speed, and a society that keeps deciding for itself accumulates
+  // recoverable dependence rather than irreversible dependence.
+  //
+  // This also fixes a divergence the test caught. resilient_civ caps IC at 1-II,
+  // and II grew to 1.0 regardless of human agency, so in that hypothesis IC was
+  // pinned at 0 before capture could start and T3 never fired -- the
+  // T3-without-T4 window the test looks for closed, and the check failed
+  // (T3=T4=36 where the committed baseline had T3=19, T4=17, T3-only=2). The
+  // interaction is real: a gate that slows capture lets irreversible embedding
+  // outrun it. Gating II on the same quantity keeps the two mechanisms coherent
+  // instead of letting one silently disable the other.
+  st.II = Math.min(1.0, st.II
+    + 0.1 * A * (1.0 - st.II) * (0.35 + 0.65 * captureGateII) * dt);
+  // IC growth itself moved below, into the human-agency section, so that it can be
+  // gated on people still holding the decision loop. Leaving the ungated term here
+  // as well would have doubled the capture rate, since both lines incremented IC
+  // by the same amount every month.
 
   // ---- Institutional veto -------------------------------------------------
   // The only hard limit on IC before this was the resilient_civ branch below
@@ -652,6 +770,76 @@ function stepDynamics(st, cfg, dt, stochastic, particle) {
     const cap = E.t3CaptureThreshold * 0.97;
     st.IC = Math.min(st.IC, cap);
   }
+
+  // ---- Human agency --------------------------------------------------------
+  // The only human-side variable in the model. Before this the ladder of
+  // "stages of disengagement" was measured entirely from the artifact side:
+  // IC grows from IL, IL grows from DP, DP grows from P and A. That chain is
+  // closed on itself, so T3 could not fail to arrive in any world -- the model
+  // had no quantity that could lose.
+  //
+  // humanAgency is the share of significant economic and institutional
+  // decisions still made by people. It is not employment and not skill; it is
+  // the position in the decision loop. It erodes as delegation pays off, and is
+  // restored by incidents, state intervention and institutional resistance.
+  //
+  // It feeds back into capture: institutions cannot be captured while people
+  // still hold the decisive position, so IC growth is gated on humanAgency.
+  // This is what makes T3 a question rather than a schedule.
+  let haDelta = -E.humanAgencyDecay * dt;
+  // Delegation pays in proportion to how good the machine is relative to what
+  // people can do unaided. Saturating above A = 12 keeps a fast model from
+  // erasing human agency in a single decade.
+  haDelta += E.humanAgencyDelegationGain
+           * Math.min(1.0, Math.max(0.0, (A - 4.0) / 8.0)) * dt;
+
+  // Recovery terms are proportional to the LOSS, not standing additions. See the
+  // calibration warning on these parameters: as flat +rates they dominated the
+  // erosion and pushed humanAgency to 1.0, which made the capture gate inert.
+  // Scaling by (1 - humanAgency) means an incident can restore authority after
+  // it has been ceded, but can never manufacture authority that erosion has
+  // already spent -- the difference between recovery and growth.
+  const haLoss = 1.0 - st.humanAgency;
+  // Resistance counts before it is strong enough to bind. Gating this bonus on
+  // st.vetoActive > institutionalVetoThreshold meant it applied only to the ~16%
+  // of particles whose veto actually binds, so in every other world people had
+  // NO institutional resistance at all -- a discontinuous cliff at a threshold
+  // the page never shows. Scaled by the ratio instead, so a near-binding veto
+  // holds most of the position and a binding one holds all of it.
+  // NOTE ON SIGN. This term SLOWS erosion rather than reversing it, and the
+  // distinction is load-bearing. A recovery term of the form +k*(1 - ha) pulls
+  // ha back UP toward 1.0, which is right for an incident (authority is
+  // temporarily restored) but exactly backwards for resistance: institutional
+  // vetoes do not hand decision-making power back to the public, they prevent
+  // it from being ceded. So veto resistance is applied as a damping factor on
+  // the EROSION term, not as a positive contribution.
+  //
+  // The first version added +1.4*vetoRatio*(1-ha), which made the steady state
+  // ha = 1 - (decay - gain)/(vetoBonus*vetoRatio) -- i.e. STRONGER resistance
+  // drove ha toward 0.91, above the 0.40 gate. Measured across three arms the
+  // reach of T3 stayed at 98% and the median moved the wrong way, so the sign
+  // error was invisible in aggregate while being plainly wrong in the algebra.
+  const vetoRatio = Math.max(0.0, Math.min(1.0,
+    st.vetoActive / Math.max(1e-9, E.institutionalVetoThreshold)));
+  const erosionScale = 1.0 - Math.min(0.85, E.humanAgencyVetoBonus * vetoRatio);
+  haDelta *= erosionScale;
+  if (st.stateIntervention) {
+    haDelta += E.humanAgencyInterventionBonus * haLoss * dt;
+  }
+  if (st.alignmentIncidentCooldown > 0) {
+    haDelta += E.humanAgencyRecover * haLoss * dt;
+  }
+  st.humanAgency = Math.max(E.humanAgencyFloor, Math.min(1.0, st.humanAgency + haDelta));
+
+  // IC growth requires people to be out of the loop. Below the gate, capture
+  // essentially stops: institutions cannot be captured by a system that
+  // humans still decide for. Multiplied into the existing term rather than
+  // applied as a separate cap, so the two mechanisms compose instead of
+  // fighting.
+  const captureGate = Math.max(0.0, Math.min(1.0,
+    (st.humanAgency - E.humanAgencyCaptureGate) / (1.0 - E.humanAgencyCaptureGate)));
+  st.IC = Math.min(1.0, st.IC
+    + 0.2 * st.IL * Math.max(0, (A - 4.0) / 10.0) * captureGate * dt);
 
   if (p === 'resilient_civ') {
     st.IC = Math.min(st.IC, Math.max(0, 1.0 - st.II));
@@ -728,6 +916,14 @@ function stepDynamics(st, cfg, dt, stochastic, particle) {
     st.alignmentIncidentCooldown -= dt;
     shockDamping = 0.0;
   }
+  // Pre-existing bug, found while tracing humanAgency: the decrement above can
+  // take the cooldown negative, and the re-arm test at the top reads `<= 0`, so
+  // it does re-arm. What it did NOT do was stop drifting -- a cooldown stuck at
+  // -0.083 is still <= 0, so it re-armed, but the leftover was carried into the
+  // shockDamping comparison and any other consumer reading the raw value saw a
+  // negative countdown. Clamping here keeps the invariant that a spent cooldown
+  // is exactly zero.
+  if (st.alignmentIncidentCooldown < 0) st.alignmentIncidentCooldown = 0;
 
   if (!st.gpuBubbleBurst && year > 2027.0 && A < 4.0 && rnd() < E.bubbleBurstRisk * dt) {
     st.gpuBubbleBurst = true;
@@ -842,10 +1038,12 @@ function stepDynamics(st, cfg, dt, stochastic, particle) {
            // vetoActive is the only readout of whether institutional resistance
            // is currently binding. Without it in the return, the veto could not
            // be diagnosed at all: an IC plateau looked identical to a plateau
-           // caused by the resilient_civ branch, and the 4% of runs that still
-           // reached T3 with veto_strength forced to 1.0 could not be traced to
-           // the arming window.
-           vetoActive: st.vetoActive };
+           // caused by the resilient_civ branch.
+           vetoActive: st.vetoActive,
+           // humanAgency is the human-side share of decisions. Exposed for the
+           // same reason: a T3 that is merely late and a T3 that never arrives
+           // look identical from the stage medians alone.
+           humanAgency: st.humanAgency };
 }
 
 function IL(st) { return st.IL; }
@@ -1198,6 +1396,13 @@ class ParticleFilterTracker {
     for (let i = 1; i < this.n; i++) cumw[i] = cumw[i - 1] + this.weights[i];
     const wTotal = cumw[this.n - 1] || 1.0;
 
+    // Median human agency at the year T3 is reached, and at the end of the
+    // horizon. humanAgency is a state variable, not a particle parameter, so it
+    // has no posterior mean to read from getSummary() -- it only exists once a
+    // trajectory is run. Reported because it is the human-side quantity the
+    // whole ladder of "stages of disengagement" is named after, and the page
+    // should not describe that ladder while never showing it.
+    const haAtT3 = [], haAtEnd = [];
     for (let run = 0; run < nRuns; run++) {
       // Systematic resampling over posterior weights: one draw per run.
       const u = (run + rnd()) / nRuns;
@@ -1223,6 +1428,17 @@ class ParticleFilterTracker {
           plotIdx++;
         }
       }
+
+      // Human agency at the moment institutions were captured, and where it
+      // ended up. Recorded per run: the ladder of "stages of disengagement" is
+      // named after the loss of human position, and this is the number that
+      // says how much was left when it was lost.
+      //
+      // Previously this push did not exist -- only the declaration and the
+      // percentile summary were added -- so atT3 was always null and the page
+      // silently rendered no human-agency line at all, with no error anywhere.
+      haAtEnd.push(st.humanAgency);
+      if (st.yT3 !== null) haAtT3.push(st.humanAgency);
 
       const cur = this.cfg.CURRENT_YEAR;
       t1Years.push(st.yT1 !== null ? st.yT1 - cur : Infinity);
@@ -1263,7 +1479,18 @@ class ParticleFilterTracker {
         t1Years, t2Years, t3Years, t4Years,
         trajectory: { years: yrs, median: med, p10: p10a, p25: p25a, p75: p75a, p90: p90a },
         embodimentTrajectory: { years: embYrs, median: embMed, p10: embP10, p25: embP25, p75: embP75, p90: embP90 },
-        gapTrajectory: { years: wmYrs, reasoning: rMed, wm: wmMed }
+        gapTrajectory: { years: wmYrs, reasoning: rMed, wm: wmMed },
+        // Human agency. atT3 is the share of significant decisions still made by
+        // people at the moment institutions were captured -- the number the
+        // "stages of disengagement" ladder implies but never stated. atEnd is
+        // where it settles in runs that never reach T3, which is what the veto
+        // worlds look like. null means the sample was empty, never zero.
+        humanAgency: {
+            atT3: haAtT3.length ? percentile(haAtT3, 50) : null,
+            atEnd: haAtEnd.length ? percentile(haAtEnd, 50) : null,
+            atT3_p25: haAtT3.length ? percentile(haAtT3, 25) : null,
+            atT3_p75: haAtT3.length ? percentile(haAtT3, 75) : null,
+        }
     };
   }
 
@@ -1326,7 +1553,8 @@ class ParticleFilterTracker {
         this.particles = savedParticles;
         this.weights = savedWeights;
       }
-      const row = { scale, priorAgencyMean: baseMean * scale, med: {} };
+      const row = { scale, priorAgencyMean: baseMean * scale, med: {},
+                    humanAgency: mc.humanAgency || null };
       for (const st of stages) {
         const arr = (mc[st] || []).filter(v => isFinite(v));
         if (arr.length) row.med[st] = percentile(arr, 50);
@@ -1349,7 +1577,11 @@ class ParticleFilterTracker {
     }
     __rngState = savedRngState;
     __seed = savedSeed;
-    return { basePrior: baseMean, scales, rows, sensitivity };
+    // humanAgency from the BASELINE row, so the panel reports the human-side
+    // number under the shipped prior rather than averaging across priors, which
+    // would describe a world the model never actually simulates.
+    return { basePrior: baseMean, scales, rows, sensitivity,
+             humanAgency: (base && base.humanAgency) || null };
   }
 
   // Restore cloned state
@@ -1737,12 +1969,24 @@ function renderPriorSensitivity(tracker) {
       const rel = sv.rel === null ? '' : ` (${Math.round(sv.rel * 100)}%)`;
       return `<div style="margin-top:3px">${label}: <span style="font-family:monospace;color:#58a6ff">${fmt(sv.min)} – ${fmt(sv.max)}</span> ${L.prior_sens_unit || 'г.'}${rel}</div>`;
     };
+    // Human agency at capture. Shown here because the ladder is called
+    // "stages of disengagement" and this is the first quantity on the page
+    // that speaks to the humans in it.
+    const haLine = (r) => {
+      const ha = r && r.humanAgency;
+      if (!ha || ha.atT3 === null || !isFinite(ha.atT3)) return '';
+      return `<div style="margin-top:3px">${L.ha_at_t3 || 'Доля решений за людьми при T3'}: ` +
+             `<span style="font-family:monospace;color:#a855f7">${ha.atT3.toFixed(2)}</span>` +
+             ` <span style="color:#6b7280">(${L.ha_range || 'p25-p75'}: ` +
+             `${ha.atT3_p25.toFixed(2)}-${ha.atT3_p75.toFixed(2)})</span></div>`;
+    };
     const html = `
       <div style="font-size:0.75rem;color:var(--text-muted);margin-top:8px;border-top:1px dashed #1e1e2e;padding-top:8px;line-height:1.4">
         <b style="color:#f0883e">${L.prior_sens_title || 'Чувствительность к априорам'}</b>
         <div style="margin-top:2px">${L.prior_sens_note || 'T3/T4 при априоре потолка агентности ±30% (это допущение, а не измерение):'}</div>
         ${line('T3', s.sensitivity.t3Years)}
         ${line('T4', s.sensitivity.t4Years)}
+        ${haLine(s)}
         <div style="margin-top:4px;color:#6b7280">${L.prior_sens_prior || 'Априор:'} ${s.basePrior}</div>
       </div>`;
     _priorSensCache.key = key;
@@ -2499,6 +2743,8 @@ const LANG = {
     prior_sens_prior:'Априор:',
     prior_sens_pending:'Считаем чувствительность…',
     prior_sens_unit:'г.',
+    ha_at_t3:'Доля решений за людьми при T3',
+    ha_range:'p25–p75',
     prior_sens_failed:'Чувствительность недоступна',
     wm_posterior_title:'Текущие апостериорные веса гипотез',
     // Swarm canvas
@@ -2819,6 +3065,8 @@ const LANG = {
     prior_sens_prior:'Prior:',
     prior_sens_pending:'Computing sensitivity…',
     prior_sens_unit:'y',
+    ha_at_t3:'Human share of decisions at T3',
+    ha_range:'p25-p75',
     prior_sens_failed:'Sensitivity unavailable',
     wm_posterior_title:'Current Posterior Hypothesis Weights',
     // Footer / misc

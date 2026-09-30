@@ -129,17 +129,37 @@ const lead = P(f4, 50) - P(f3, 50);
 check('T3 leads T4 by a material margin', lead > 2, `lead time = ${lead.toFixed(1)}y (T3 is not redundant with T4)`);
 // T4 implies T3 is the correct causal ordering; T3-only must exist for at least one hypothesis.
 let t3onlyFound = false;
-for (const wm of ['hard_wall', 'resilient_civ']) {
+let leadFound = false;
+// All four hypotheses are checked, not just the two where the window was found
+// before. The T3-only window is IC in (0.6, 0.818) -- T3 fires at IC > 0.6 while
+// T4 needs DR > 0.9, and at full embodiment that requires IC >= 0.818 -- so it
+// is 0.218 wide in IC, roughly 3-4 months of growth at A = 40 and 24 months in
+// slower worlds. Restricting the check to two hypotheses asserted a structural
+// property that only held for those two.
+for (const wm of ['hard_wall', 'resilient_civ', 'cascade', 'slow_takeoff']) {
   G.setSeed(11); const t = new G.ParticleFilterTracker(400);
   t.particles.forEach(p => { p.world_model = wm; }); t.weights.fill(1 / 400);
   for (const o of hist) t.observeRealData(o.year, o);
   const m = t.runMonteCarloForecast(400);
   const b = m.t3Years.filter((v, i) => isFinite(v) && isFinite(m.t4Years[i])).length;
   const t3o = fin(m.t3Years).length - b;
-  console.log(`  ${wm}: T3=${fin(m.t3Years).length} T4=${fin(m.t4Years).length} T3-only=${t3o}`);
+  // Also measure the lead time, which is the substantive claim: T3 must be
+  // reachable while T4 is not. A run that never reaches T4 proves T3 is not a
+  // proxy for it; a run that reaches T3 months before T4 proves T3 leads.
+  let maxLead = 0;
+  for (let i = 0; i < m.t3Years.length; i++) {
+    if (isFinite(m.t3Years[i]) && isFinite(m.t4Years[i])) {
+      maxLead = Math.max(maxLead, m.t4Years[i] - m.t3Years[i]);
+    }
+  }
+  console.log(`  ${wm}: T3=${fin(m.t3Years).length} T4=${fin(m.t4Years).length} T3-only=${t3o}` +
+              ` maxLead=${maxLead.toFixed(2)}y`);
   if (t3o > 0) t3onlyFound = true;
+  if (maxLead > 0.5) leadFound = true;
 }
 check('T3 and T4 diverge for at least one hypothesis', t3onlyFound, 'T3 is not a perfect proxy of T4');
+check('T3 leads T4 by a real margin in at least one hypothesis', leadFound,
+  'capture precedes dependency rather than coinciding with it');
 
 console.log('\n=== 6. T1/T2 ARE PAST (read as "already achieved") ===');
 const past1 = f1.filter(x => x <= 0).length, past2 = f2.filter(x => x <= 0).length;
