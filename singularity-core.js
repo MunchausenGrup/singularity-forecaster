@@ -272,6 +272,18 @@ const FALLBACK_BENCHMARK_HISTORY = [
     arenaElo: 1585, arcAgi: 97.2, sweBench: 80.3, trainingFlopsLog: 27.5, horizon: 200.0, simToReal: 55.0, moravec: 62.0, autoAssembly: 2.0,
     arenaElo_sigma: 20, arcAgi_sigma: 4, sweBench_sigma: 4, trainingFlopsLog_sigma: 0.3, horizon_sigma: 0.4, simToReal_sigma: 5, moravec_sigma: 5, autoAssembly_sigma: 0.3,
     notes: "Июнь 2026. Mythos-class модель. SWE-Bench Pro 80.3%, FrontierCode Diamond — лучший среди frontier-моделей. OSWorld-Verified 85.0%. HLE with tools 64.5%. ExploitBench (cybersecurity) 78.0%. HealthBench 66.0%. Computer use 85.0%. GDPval-AA 1932. Сейфгарды на кибербезопасность и биологию (Fable 5 перенапрягает в Opus 4.8 на этих темах). Mythos 5 — та же модель без ограничений, доступна для cyberdefenders через Project Glasswing."
+  },
+  {
+    year: 2026.68, event: "GPT-6 Astra",
+    arenaElo: 1610, arcAgi: 98.5, sweBench: 82.0, trainingFlopsLog: 28.2, horizon: 260.0, simToReal: 62.0, moravec: 66.0, autoAssembly: 2.10,
+    arenaElo_sigma: 25, arcAgi_sigma: 4, sweBench_sigma: 6, trainingFlopsLog_sigma: 0.3, horizon_sigma: 0.5, simToReal_sigma: 6, moravec_sigma: 5, autoAssembly_sigma: 0.3,
+    notes: "3 сентября 2026. ARC-AGI-1 98.5% (High/XHigh), ARC-AGI-2 95.0%, ARC-AGI-3 62.7% на стандартной harness / 99.95% на provider-adapter harness (расхождение из-за инструментария). FrontierMath Tier 4 97.6%, GPQA-D 96.0%, OSWorld 2.0 72.6%, Terminal-Bench 4.0 66.4%, DeepSWE 74.1%, ARC-AGI-3 human parity на 96% уровней. ВНИМАНИЕ: SWE-bench Verified для Astra не опубликован — поле sweBench оценено по DeepSWE/FrontierSWE/SWE-bench Pro и имеет расширенную sigma. Человеческий средний ARC-AGI-3 — 48%."
+  },
+  {
+    year: 2026.72, event: "Claude Opus 5.5",
+    arenaElo: 1620, arcAgi: 98.5, sweBench: 82.5, trainingFlopsLog: 28.0, horizon: 280.0, simToReal: 64.0, moravec: 67.0, autoAssembly: 2.15,
+    arenaElo_sigma: 25, arcAgi_sigma: 4, sweBench_sigma: 6, trainingFlopsLog_sigma: 0.3, horizon_sigma: 0.5, simToReal_sigma: 6, moravec_sigma: 5, autoAssembly_sigma: 0.3,
+    notes: "22 сентября 2026. ARC-AGI-1 98.5% (High), ARC-AGI-2 93.3%. HLE with tools 67.7% (выше Astra 57.2%), Terminal-Bench 4.0 66.4% ±2.6, GDPval-AA 1822 Elo, Artificial Analysis Intelligence Index — топ (58 при max effort). В 2.1 раза быстрее Fable 5.1 при цене на 40% ниже. ВНИМАНИЕ: SWE-bench Verified для Opus 5.5 не опубликован Anthropic — поле sweBench оценено по SWE-bench Pro (89.9% у llm-stats, не подтверждено вендором) и CursorBench 4.0 57.8%, sigma расширена."
   }
 ];
 

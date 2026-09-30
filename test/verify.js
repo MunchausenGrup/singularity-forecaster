@@ -40,6 +40,55 @@ let fails = 0;
 const check = (name, ok, detail) => { console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${name}${detail ? '  ' + detail : ''}`); if (!ok) fails++; };
 const hist = G.FALLBACK_BENCHMARK_HISTORY, cfg = G.createConfig();
 
+console.log('=== 0. BENCHMARK HISTORY INTEGRITY ===');
+// Guards for hand-edited observation data. A typo here silently changes every
+// forecast on the page, and the engine does not complain: a missing field
+// becomes undefined (propagated through the likelihood), a backwards year makes
+// resampling non-causal, and a duplicated event is indistinguishable from a
+// genuine re-release at the filter level.
+const ROW_FIELDS = ['year', 'arenaElo', 'arcAgi', 'sweBench', 'trainingFlopsLog',
+                    'horizon', 'simToReal', 'moravec', 'autoAssembly'];
+const badFields = [];
+for (const row of hist) {
+  for (const f of ROW_FIELDS) {
+    if (typeof row[f] !== 'number' || !isFinite(row[f])) badFields.push(`${row.event}.${f}=${row[f]}`);
+  }
+  for (const f of ROW_FIELDS.map(x => x + '_sigma')) {
+    if (f in row && (typeof row[f] !== 'number' || !isFinite(row[f]) || row[f] <= 0)) {
+      badFields.push(`${row.event}.${f}=${row[f]}`);
+    }
+  }
+}
+check('every row has finite numeric fields', badFields.length === 0, badFields.slice(0, 5).join(', '));
+
+let orderOk = true;
+for (let i = 1; i < hist.length; i++) {
+  if (hist[i].year <= hist[i - 1].year) { orderOk = false; break; }
+}
+check('years strictly increasing', orderOk);
+
+const events = new Set(hist.map(r => r.event));
+check('no duplicate events', events.size === hist.length,
+  `${hist.length} rows, ${events.size} unique`);
+
+const dupYears = hist.map(r => r.year).filter((y, i, a) => a.indexOf(y) !== i);
+check('no duplicate years', dupYears.length === 0, dupYears.join(', '));
+
+check('arcAgi within 0..100', hist.every(r => r.arcAgi >= 0 && r.arcAgi <= 100));
+check('sweBench within 0..100', hist.every(r => r.sweBench >= 0 && r.sweBench <= 100));
+// Autonomy horizon is NOT required to be monotonic: GPT-4.5 Preview (4h) sits
+// below o3-preview (8h) because it was a non-agentic model, and that is a real
+// feature of the series, not a data error. Only flag a total collapse.
+check('horizon positive and non-explosive',
+  hist.every(r => r.horizon > 0 && r.horizon <= 100000),
+  `min=${Math.min(...hist.map(r => r.horizon))} max=${Math.max(...hist.map(r => r.horizon))}`);
+check('horizon rises overall (last >= 10x first)',
+  hist[hist.length - 1].horizon >= 10 * hist[0].horizon,
+  `${hist[0].horizon} -> ${hist[hist.length - 1].horizon}`);
+check('latest observation is before the pinned present',
+  hist[hist.length - 1].year < 2026.75,
+  `last=${hist[hist.length - 1].event} @ ${hist[hist.length - 1].year}`);
+
 console.log('=== 1. SEEDED PRNG ===');
 G.setSeed(12345); const a1 = [G.rnd(), G.rnd(), G.rnd(), G.rnd()];
 G.setSeed(12345); const a2 = [G.rnd(), G.rnd(), G.rnd(), G.rnd()];
