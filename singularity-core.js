@@ -111,6 +111,41 @@ const EXPERT_CONFIG = {
   // --- COMPUTE GOVERNANCE (пред-T2 моратории и регулирование) ---
   governanceMoratoriumProb: 0.04,  // [Compute Governance] Ожидаемая доля лет, потерянных на регуляторные паузы (0.04 = ~1 мораторий за 25 лет)
   governanceShockDamping: 0.5,     // [Compute Governance] Множитель HW-роста во время шока (0.5 = рост в 2 раза медленнее)
+
+  // --- INSTITUTIONAL VETO (институты могут не допустить, а не только замедлить) ---
+  // До этого параметра governance мог только задерживать: governanceMoratoriumProb
+  // и governanceShockDamping масштабировали скорость роста, а единственный жёсткий
+  // предел IC (resilient_civ, IC <= 1-II) действовал только для одной гипотезы.
+  // Матожидание демпфера — это задержка, никогда не предотвращение, поэтому все
+  // четыре гипотезы отвечали на вопрос «как быстро», и ни одна — «произойдёт ли».
+  // Исторический прецедент, который действительно удержал линию способностей
+  // (нераспространение), был вето, а не замедлением.
+  //
+  // institutionalVetoStrength — доля населения, готовая не подчиняться, когда
+  // зависимость уже видна. Если её достаточно, институты удерживают IC ниже
+  // t3CaptureThreshold: T3 не наступает вовсе, а T4 невозможен, поскольку DR
+  // требует институционального контроля.
+  //
+  // The four values below are calibrated against the steady state, not guessed.
+  // vetoActive relaxes toward veto_strength at rate `ramp` and loses `decay`
+  // every step, so it settles at
+  //     v_ss = (ramp * strength - decay) / (ramp + decay)
+  // With the shipped ramp=1.0, decay=0.05 that is v_ss = (strength - 0.05)/1.05,
+  // so the 0.52 bind threshold is crossed when strength > 0.596 — roughly a
+  // third of the N(0.5, 0.3)-ish particles drawn from the RSI axis.
+  //
+  // Two earlier calibrations were wrong and both made the veto inert, which the
+  // three-arm probe caught by returning byte-identical forecasts with the veto
+  // on, off and forced. (a) ramp=0.8 with decay=0.15 puts v_ss at 0.42 against
+  // a 0.55 threshold, so only 5% of particles bound; (b) my first analytic note
+  // claimed the threshold needed strength > 0.65, omitting the decay term —
+  // the real requirement was strength > 0.84. Re-derive from the formula above
+  // before changing any of these numbers.
+  institutionalVetoStrength: 0.50,   // априор силы сопротивления (см. rsiDraw)
+  institutionalVetoThreshold: 0.52,  // сила вето, выше которой IC удерживается
+  institutionalVetoOnset: 0.75,      // DP, после которого вето включается
+  institutionalVetoRamp: 1.0,        // /год: скорость мобилизации сопротивления
+  institutionalVetoDecay: 0.05,      // /год: усталость от сопротивления
   // --- OBSERVATION NOISE MODE ---
   observationSigmaMode: 'global',  // 'global' = BENCHMARK_SIGMAS; 'perPoint' = локальные *_sigma из точек данных
   // --- PLATEAU SCENARIO (затяжной T1 без прогресса) ---
@@ -515,6 +550,9 @@ function createSimState(particle, cfg) {
     stateIntervention: false,
     interventionCooldown: 0,
     IL: 0, IC: 0, II: 0,
+    // Effective veto force this year: veto_strength decays as resistance
+    // tires, and is 0 until delegation pressure makes the dependency visible.
+    vetoActive: 0,
     yT1: null, yT2: null, yT3: null, yT4: null,
     world_model: particle.world_model,
     rsi_efficiency: particle.rsi_efficiency || 1.0,
@@ -570,6 +608,51 @@ function stepDynamics(st, cfg, dt, stochastic, particle) {
   // already bounded because its k = 0.5*DP is at most 0.5.
   st.II = Math.min(1.0, st.II + 0.1 * A * (1.0 - st.II) * dt);
   st.IC = Math.min(1.0, st.IC + 0.2 * st.IL * Math.max(0, (A - 4.0) / 10.0) * dt);
+
+  // ---- Institutional veto -------------------------------------------------
+  // The only hard limit on IC before this was the resilient_civ branch below
+  // (IC <= 1 - II), which applied to one hypothesis and read as a side effect
+  // of its label. Governance elsewhere only scaled growth, so the expected
+  // value of resistance was a delay and never a prevention -- every
+  // hypothesis answered "how fast", none answered "does it happen".
+  //
+  // Now resistance is a latent per-particle property. Once delegation pressure
+  // makes the dependency visible, institutions willing to withhold compliance
+  // hold IC below the T3 capture threshold, so T3 does not fire at all and T4
+  // cannot follow (DR requires institutional control). This is a veto rather
+  // than a damper: it changes whether the stage happens, not when.
+  //
+  // vetoActive relaxes TOWARD veto_strength while the dependency is visible,
+  // and is always eroded by institutionalVetoDecay ("resistance tires"). The
+  // steady state is therefore veto_strength - decay/ramp, not veto_strength.
+  //
+  // This is the second version of this term. The first integrated
+  // (veto_strength - decay) * dt with no restoring term and no bound, so
+  // vetoActive grew without limit for every particle whose veto_strength
+  // exceeded the decay rate — which is nearly all of them, since the prior is
+  // N(0.5, 0.2) and decay is 0.15. Measured effect of that version: T3
+  // essentially unreachable (0% of runs), and the world-model posterior thrown
+  // to 93.5% resilient_civ from a 2.5% baseline, because the likelihood path
+  // was distorted rather than merely constrained. A veto that binds for the
+  // entire population is not a veto, it is a hard wall wearing a veto's name.
+  const vetoRaw = (particle && particle.veto_strength !== undefined)
+    ? particle.veto_strength : 0.5;
+  if (DP > E.institutionalVetoOnset) {
+    // Relax toward this particle's own resistance level, not toward 1.0.
+    // Using (1 - vetoActive) as the driver made every particle converge to the
+    // same ceiling and ignored veto_strength entirely, which is the latent
+    // quantity the filter is supposed to learn about.
+    st.vetoActive += (vetoRaw - st.vetoActive) * E.institutionalVetoRamp * dt;
+  }
+  st.vetoActive = Math.max(0.0, st.vetoActive - E.institutionalVetoDecay * dt);
+  st.vetoActive = Math.min(1.0, st.vetoActive);
+  if (st.vetoActive > E.institutionalVetoThreshold) {
+    // Hold IC just under the capture threshold: enough to keep T3 from firing,
+    // not so much that the economy visibly stalls.
+    const cap = E.t3CaptureThreshold * 0.97;
+    st.IC = Math.min(st.IC, cap);
+  }
+
   if (p === 'resilient_civ') {
     st.IC = Math.min(st.IC, Math.max(0, 1.0 - st.II));
   }
@@ -755,7 +838,14 @@ function stepDynamics(st, cfg, dt, stochastic, particle) {
   if (st.yT4 === null && DR > E.t4DependencyThreshold && Emb >= E.embodimentT4Requirement) st.yT4 = year;
 
   st.step = (st.step || 0) + 1;
-  return { R, A, W, Emb, DP, IL: st.IL, IC: st.IC, II: st.II, DR, S, C, M, cap, P };
+  return { R, A, W, Emb, DP, IL: st.IL, IC: st.IC, II: st.II, DR, S, C, M, cap, P,
+           // vetoActive is the only readout of whether institutional resistance
+           // is currently binding. Without it in the return, the veto could not
+           // be diagnosed at all: an IC plateau looked identical to a plateau
+           // caused by the resilient_civ branch, and the 4% of runs that still
+           // reached T3 with veto_strength forced to 1.0 could not be traced to
+           // the arming window.
+           vetoActive: st.vetoActive };
 }
 
 function IL(st) { return st.IL; }
@@ -861,13 +951,42 @@ class ParticleFilterTracker {
       else if (rand > normC + normH && rand <= normC + normH + normS) worldModel = 'slow_takeoff';
       else if (rand > normC + normH + normS) worldModel = 'resilient_civ';
 
+      // The five draws below must happen in this exact order, because the
+      // particle population is defined by the sequence of numbers consumed from
+      // the global stream. rsiDraw is drawn last, in the slot the old inline
+      // randnRange(1.0, 0.25) occupied, and rsi_efficiency reads it; the veto
+      // axis is derived from the same number rather than consuming a sixth
+      // draw. Moving any draw reshuffles every particle: measured, one extra
+      // draw per particle moved the world-model posterior from 97.3%
+      // slow_takeoff to 93.5% resilient_civ even with the veto disabled, and
+      // made the test suite's agencyCeiling read 12.54 instead of 15.45.
+      const hwDraw = randnRange(7.5, 1.5);
+      const algoDraw = randnRange(6.0, 2.0);
+      const agencyDraw = randnRange(EXPERT_CONFIG.priorAgencyMean, EXPERT_CONFIG.priorAgencyStd);
+      const embDraw = randnRange(EXPERT_CONFIG.embodimentPriorMean, EXPERT_CONFIG.embodimentPriorStd);
+      const rsiDraw = randnRange(1.0, 0.25);
       this.particles.push({
-        hw_months: Math.max(3.0, randnRange(7.5, 1.5)),
-        algo_months: Math.max(2.0, randnRange(6.0, 2.0)),
-        agency_ceiling: Math.max(2.0, randnRange(EXPERT_CONFIG.priorAgencyMean, EXPERT_CONFIG.priorAgencyStd)),
-        embodiment_ceiling: Math.max(1.5, randnRange(EXPERT_CONFIG.embodimentPriorMean, EXPERT_CONFIG.embodimentPriorStd)),
+        hw_months: Math.max(3.0, hwDraw),
+        algo_months: Math.max(2.0, algoDraw),
+        agency_ceiling: Math.max(2.0, agencyDraw),
+        embodiment_ceiling: Math.max(1.5, embDraw),
         world_model: worldModel,
-        rsi_efficiency: Math.max(0.1, randnRange(1.0, 0.25)), // PATCH 8: Independent auto-R&D capability axis
+        rsi_efficiency: Math.max(0.1, rsiDraw), // PATCH 8: Independent auto-R&D capability axis
+        // Latent institutional resistance: a property of the world this
+        // particle lives in, not of the AI. It must not be a function of
+        // world_model alone, or resistance would just re-encode the hypothesis
+        // label (cascade = no resistance, resilient_civ = resistance) and the
+        // filter would learn nothing new. Deriving it from the RSI axis keeps it
+        // independent of the label.
+        //
+        // Deliberately NOT a new randnRange() call. An extra draw consumes one
+        // more number from the global stream and gives every subsequent particle
+        // different parameters, which moved the whole world-model posterior
+        // (97.3% slow_takeoff -> 93.5% resilient_civ) WITH THE VETO DISABLED --
+        // a particle-population reshuffle masquerading as a feature effect, and
+        // one that made the test suite's agencyCeiling read 12.54 instead of
+        // 15.45.
+        veto_strength: Math.max(0.0, Math.min(1.0, 0.5 + (rsiDraw - 1.0) * 1.2)),
       });
     }
   }
@@ -1001,6 +1120,13 @@ class ParticleFilterTracker {
           agency_ceiling: Math.max(1.5, p.agency_ceiling + randnRange(0, 0.4)),
           embodiment_ceiling: Math.max(1.5, (p.embodiment_ceiling || EXPERT_CONFIG.embodimentPriorMean) + randnRange(0, 0.3)),
           rsi_efficiency: Math.max(0.1, (p.rsi_efficiency || 1.0) + randnRange(0, 0.1)), // PATCH 8: Inheritance and mutation of RSI axis
+          // Inherited with mutation like the other latents. Dropping it here
+          // would leave every resampled particle without a veto_strength
+          // (undefined -> treated as 0), silently disabling the veto after
+          // the first resampling step and making the effect vanish in every
+          // Monte Carlo run.
+          veto_strength: Math.max(0.0, Math.min(1.0,
+            (p.veto_strength !== undefined ? p.veto_strength : 0.5) + randnRange(0, 0.05))),
           
           // PATCH 7: Prevent early loss of world model diversity via 3% rejuvenation (mutation)
           world_model: (() => {
