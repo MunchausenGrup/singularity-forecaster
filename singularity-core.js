@@ -2277,19 +2277,63 @@ function swarmBuildTracker(idx) {
   return t;
 }
 
+// Size a canvas backing store from its CURRENT css box, in device pixels.
+//
+// Sizing once at init is fragile, and the failure is silent. The bootstrap
+// awaits loadHistoricalBenchmarks() before the first swarmInit(), so the canvas
+// can still be unlaid-out at that moment (offsetWidth 0). That assigns a 0x0
+// backing store, and every later draw is discarded by the 2d context — nothing
+// re-sizes it, so the canvas stays invisible forever while the surrounding
+// wrapper still paints its 420px background. To a visitor that reads as an
+// empty panel, not as an error.
+//
+// Returns { ctx, w, h } with w/h in CSS pixels, or null when the element has no
+// layout yet — the caller must skip the draw and retry later rather than paint
+// into a zero-sized surface.
+function syncCanvasToDisplay(c) {
+  if (!c) return null;
+  const dpr = window.devicePixelRatio || 1;
+  const w = c.offsetWidth, h = c.offsetHeight;
+  if (!(w > 0) || !(h > 0)) return null;
+  const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
+  // Assigning width/height resets the transform, so only assign when the size
+  // really changed. Then set the DPR transform explicitly: ctx.scale would
+  // compound on every redraw that happened to run without a resize first.
+  if (c.width !== bw || c.height !== bh) { c.width = bw; c.height = bh; }
+  const ctx = c.getContext('2d');
+  if (!ctx) return null;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w, h };
+}
+
 function swarmInit() {
   const c = document.getElementById('swarmCanvas');
   if (!c) return;
-  const ctx = c.getContext('2d');
-  if (!ctx) return;
-  const dpr = window.devicePixelRatio || 1;
-  c.width = c.offsetWidth * dpr; c.height = c.offsetHeight * dpr;
-  ctx.scale(dpr, dpr);
+  if (!c.getContext('2d')) return;
   swarm.tracker = swarmBuildTracker(swarm.obsIdx);
   swarm.particles = swarm.tracker.particles.map(p => ({ x: p.hw_months, y: p.agency_ceiling, algo: p.algo_months, wm: p.world_model }));
   swarm.weights = Array.from(swarm.tracker.weights);
+  // Sizing is handled inside swarmDraw() via syncCanvasToDisplay, so a canvas
+  // that was not laid out yet is simply skipped instead of being frozen at 0x0.
   swarmDraw();
   swarmStartLive();
+
+  // Re-render on resize. The canvas is width:100%, so a window resize leaves
+  // the backing store stale — blurry when it grows, clipped when it shrinks.
+  // This is also the path that recovers a canvas that swarmDraw() skipped for
+  // lack of layout: without it a skipped draw would stay blank until the user
+  // happened to trigger something else. Debounced so a drag-resize does not
+  // rebuild the tracker on every pixel.
+  if (!window.__swarmResizeBound) {
+    window.__swarmResizeBound = true;
+    window.addEventListener('resize', () => {
+      clearTimeout(window.__swarmResizeTimer);
+      window.__swarmResizeTimer = setTimeout(() => {
+        swarmDraw();
+        if (typeof ehDraw === 'function') ehDraw();
+      }, 150);
+    });
+  }
 }
 
 function swarmSetMode(m) {
@@ -2349,8 +2393,13 @@ function swarmOnSlider(v) {
 function swarmDraw() {
   const c = document.getElementById('swarmCanvas');
   if (!c || !swarm.tracker) return;
-  const ctx = c.getContext('2d');
-  const w = c.offsetWidth, h = c.offsetHeight;
+  // Re-sync the backing store on every draw instead of trusting the one-off
+  // sizing done at init. A canvas whose layout changed (or which was never
+  // laid out) keeps a backing store that does not match its css box, and the
+  // browser silently discards the drawing.
+  const s = syncCanvasToDisplay(c);
+  if (!s) return;                       // no layout yet — retry on next call
+  const ctx = s.ctx, w = s.w, h = s.h;
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0, 0, w, h);
   const pad = 50, pw = w - pad * 2, ph = h - pad * 2;
