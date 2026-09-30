@@ -1593,7 +1593,6 @@ function updateUI(r) {
   });
 
   // Тяжелую тепловую карту запускаем асинхронно, чтобы она не "вешала" остальные графики
-  setTimeout(() => plotSensitivityHeatmap(tracker), 50);
 }
 
 function setVal(id, txt, cls) { const el = document.getElementById(id); if (el) { el.innerHTML = txt; el.className = 'status-value ' + (cls||''); } }
@@ -1673,51 +1672,6 @@ function plotCumulative(c) {
 }
 
 // ===== ADVANCED PLOT FUNCTIONS =====
-
-async function plotSensitivityHeatmap(tracker) {
-  const t = LANG[window._lang || 'ru'];
-  const c5 = document.getElementById('c5');
-  if (c5) {
-    c5.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#666680;font-family:monospace;">' + (LANG[window._lang || 'ru'].ch5_loading || 'Вычисление матрицы (асинхронно)...') + '</div>';
-  }
-
-  const arcRange = [];
-  const sweRange = [];
-  // Разреженная сетка для моментального рендера без потери смысла
-  for (let v = 50; v <= 100; v += 10) arcRange.push(v);
-  for (let v = 15; v <= 99; v += 12) sweRange.push(v);
-
-  const matrix = await tracker.runSensitivityMatrixAsync(arcRange, sweRange);
-
-  if (!document.getElementById('c5')) return;
-
-  // Default must match runSensitivityMatrixAsync's stage (T3).
-  const labelText = t.ch5_label || 'Лет до T3';
-  const textMatrix = matrix.map((row, i) =>
-    row.map((v, j) => `ARC=${arcRange[i]}%, SWE=${sweRange[j]}%<br>${labelText}: ${v.toFixed(1)} лет`)
-  );
-
-  Plotly.newPlot('c5', [{
-    z: matrix,
-    x: sweRange.map(String),
-    y: arcRange.map(String),
-    type: 'heatmap',
-    reversescale: true,
-    colorscale: [[0, '#0a0a0f'], [0.2, '#1a3a4a'], [0.4, '#0e5e7a'], [0.6, '#f0883e'], [0.8, '#ef4444'], [1, '#ff0040']],
-    text: textMatrix,
-    hoverinfo: 'text',
-    colorbar: { title: { text: t.ch5_colorbar || 'Лет до T3' }, thickness: 12, len: 0.8 },
-  }], {
-    ...LAYOUT_BASE,
-    // Axis titles go through the language pack so they follow the EN/RU toggle.
-    // They were hardcoded strings, which left the chart half-translated.
-    xaxis: { ...LAYOUT_BASE.xaxis, title: { text: t.ch5_xaxis || 'SWE-bench (%)' } },
-    yaxis: { ...LAYOUT_BASE.yaxis, title: { text: t.ch5_yaxis || 'ARC-AGI (%)' } },
-    margin: { l: 48, r: 10, t: 36, b: 44 },
-    height: 520,
-  }, PLOT_CFG);
-}
-
 function plotScenarioFan(tracker) {
   const t = LANG[window._lang || 'ru'];
   const scenarios = tracker.runScenarioOverlay(30);
@@ -2124,13 +2078,6 @@ const LANG = {
     obs_current:'Прогноз при текущих бенчмарках:',
     obs_horizon:'Автономность',
     obs_swe:'SWE-bench',
-    sens_li1:'Вертикальный градиент → доминирует Intelligence',
-    sens_li2:'Горизонтальный градиент → доминирует Agency',
-    sens_li3:'Диагональный → оба параметра равноценны',
-    sens_p1:'Карта чувствительности: как прогноз зависит от последнего наблюдения Intelligence × Agentic. Ячейка (i,j) = медианный год AGI если последнее наблюдение = (Intel=i, Agentic=j).',
-    sens_p2:'Вычисление: для каждой пары (i,j) из сетки [40,45,...,85] × [10,20,...,100] выполняется runSensitivityMatrix() — берётся текущий tracker, клонируются частицы, заменяется последнее наблюдение на (i,j), запускается MC.',
-    sens_p3:'Интерпретация цвета: синий = ранний AGI (модель «верит» что мы близко); красный = поздний AGI (далеко). Градиенты показывают, какой параметр доминирует:',
-    sens_p4:'Что влияет: текущий posterior (после всех наблюдений), архитектура модели (slope reasoning/agency, потолки). Смотрите — сдвиг на 1 пункт по какой оси сильнее всего сдвигает прогноз.',
     swarm_hint:'Нажмите «Запуск» или перетаскивайте ползунок',
     swarm_learn_p1:'Интерактивная визуализация обновления весов частиц в реальном времени. Каждая точка — гипотеза о мире (частица): скорость роста железа hw_months и потолок агентности agency_ceiling.',
     swarm_learn_p2:'Режим «Обучение» (Learn): ползунок прикладывает наблюдения бенчмарков одно за другим. При каждом наблюдении пересчитываются веса:',
@@ -2158,25 +2105,16 @@ const LANG = {
     ctrl_horizon:'Автономность (часов)', ctrl_cost:'Стоимость 1M токенов ($)',
     run_btn:'Запустить симуляцию',
     // Charts
-    tag1:'Вероятностный анализ', tag3:'Кумулятивная',
-    tag5:'Чувствительность', tag6:'Сценарии', tag7:'Декомпозиция', tag8:'Embodiment',
+    tag1:'Вероятностный анализ', tag3:'Кумулятивная', tag6:'Сценарии', tag7:'Декомпозиция', tag8:'Embodiment',
     chart1:'1. Распределение 4-х этапов Сингулярности (Monte Carlo)',
     chart3:'2. Накопленная вероятность (Cumulative PDF)',
-    // The heatmap measures T3: across the benchmark grid its median spans 1.83
-    // years (24 distinct values), while T2 spans 0.08 — T2 is already reached
     // at every benchmark pair, so a T2 heatmap was a flat block of colour.
-    chart5:'3. Чувствительность срока T3 к бенчмаркам (ARC-AGI × SWE-bench)',
-    chart6:'4. Веер сценариев (Multi-Run Overlay)',
-    chart7:'5. Вклад компонент (Stacked Area)',
+    chart6:'3. Веер сценариев (Multi-Run Overlay)',
+    chart7:'4. Вклад компонент (Stacked Area)',
     chart_gap:'6. Каузальный разрыв (Hallucination Gap)',
-    // c_gap has no container in the markup, so plotHallucinationGap() returns
-    // immediately and chart 6 is never rendered. Numbering runs 1-6 over the six
-    // charts that actually exist; chart_gap/tip_gap stay in the pack so the
-    // dormant chart keeps its strings if a container is ever restored.
-    chart8:'6. Embodiment: распределение и реальная робототехника',
+    chart8:'5. Embodiment: распределение и реальная робототехника',
     tip1:'Аппроксимация функции плотности вероятности (PDF) моментов достижения пороговых состояний τ = inf {t : C(t) ≥ C_crit}. Рассчитано методом Монте-Карло (N=3000) на основе сэмплирования из апостериорного распределения частиц.',
     tip3:'Эмпириальная кумулятивная функция распределения (CDF), F(t) = P(T ≤ t). По одной кривой на каждый этап — T1, T2, T3, T4: вероятность, что этап достигнут не позднее соответствующего года по оси X.',
-    tip5:'Тепловая карта чувствительности. По вертикали — уровень ARC-AGI, по горизонтали — уровень SWE-bench; в ячейке — медианное число лет до T3 для такого сочетания бенчмарков.',
     tip6:'Проекция 30 стохастических траекторий C(t) из ансамбля. Визуализирует фазовые переходы (смены парадигм), эффекты RSI и влияние эндогенных шоков (схлопывание пузырей, моратории).',
     tip7:'Декомпозиция логарифмического роста ∫₀ᵗ (k_hw + k_algo + k_rsi) dt. Площади отражают интегральный вклад аппаратного масштабирования, алгоритмической эффективности, парадигмальных сдвигов и рекурсивной обратной связи (RSI).',
     tip_gap:'Эпистемическая дивергенция между когнитивной мощностью (Reasoning) и каузальным согласованием (World Modeling). Зона высокого риска, где R(t) ≫ W(t), характеризующаяся структурными галлюцинациями.',
@@ -2194,9 +2132,8 @@ const LANG = {
     live_swarm_p5:'Что влияет: текущий набор наблюдений, веса частиц, случайность MC прогона. Стабильность картинки ← уверенность модели. Хаотичность ← высокая неопределённость.',
     ch1_xlabel:'Год', ch1_ylabel:'Прогонов',
     ch3_xlabel:'Год', ch3_ylabel:'P(%)', ch3_pt2:'P(T2)', ch3_pt4:'P(T4)',
-    // Names the stage the heatmap actually measures (T3 — see
     // runSensitivityMatrixAsync on why T2 was a degenerate choice).
-    ch5_label:'Лет до T3', ch5_colorbar:'Лет до T3', ch5_xaxis:'SWE-bench (%)', ch5_yaxis:'ARC-AGI (%)', ch5_loading:'Вычисление матрицы (асинхронно)...',
+
     ch7_ylabel:'Суммарный вклад (log FLOPs)',
     // ch2_xlabel is read by the scenario fan (c6) and the decomposition (c7)
     // for their x axes. It was never defined in either language pack, so both
@@ -2462,13 +2399,6 @@ const LANG = {
     obs_current:'Forecast at the current benchmarks:',
     obs_horizon:'Autonomy',
     obs_swe:'SWE-bench',
-    sens_li1:'Vertical gradient → ARC-AGI dominates',
-    sens_li2:'Horizontal gradient → SWE-bench dominates',
-    sens_li3:'Diagonal → both benchmarks matter equally',
-    sens_p1:'Sensitivity map: how the forecast depends on the latest ARC-AGI × SWE-bench observation pair. Cell (i,j) = median years to T3 when the latest observation is (ARC=i, SWE=j).',
-    sens_p2:'Computation: for each (i,j) pair from the grid, runSensitivityMatrixAsync() takes the current tracker, clones the particles, replaces the latest observation with (i,j) and runs Monte Carlo.',
-    sens_p3:'Reading the colours: the scale runs from cool to hot across a median range of about 4.3 to 8.7 years. Look for the gradient:',
-    sens_p4:'What affects it: the current posterior (after all observations) and the model architecture (reasoning/agency slopes, ceilings). Watch which axis moves the forecast most when you change it by one step.',
     swarm_hint:'Press "Run" or drag the slider',
     swarm_learn_p1:'Interactive visualisation of the particle weight update in real time. Each point is a hypothesis about the world (a particle): its hardware growth rate hw_months and its agency ceiling agency_ceiling.',
     swarm_learn_p2:'In "Learn" mode the slider applies benchmark observations one at a time. On each observation the weights are recomputed:',
@@ -2497,20 +2427,18 @@ const LANG = {
     ctrl_horizon:'Autonomy (hours)', ctrl_cost:'Cost per 1M tokens ($)',
     run_btn:'Run Simulation',
     // Charts
-    tag1:'Probabilistic Analysis', tag3:'Cumulative',
-    tag5:'Sensitivity', tag6:'Scenarios', tag7:'Decomposition', tag8:'Embodiment',
+    tag1:'Probabilistic analysis', tag3:'Cumulative',
+    // tag5 (Sensitivity) went away with the heatmap; tag6/7/8 were RU-only, so the
+    // English page showed "Сценарии" under an English heading.
+    tag6:'Scenarios', tag7:'Decomposition', tag8:'Embodiment',
     chart1:'1. Four Stages of Singularity Distribution (Monte Carlo)',
     chart3:'2. Cumulative Probability (CDF)',
-    // Axes are ARC-AGI and SWE-bench; cell value is years to T3.
-    chart5:'3. T3 timing sensitivity to benchmarks (ARC-AGI × SWE-bench)',
-    chart6:'4. Scenario Fan (Multi-Run Overlay)',
-    chart7:'5. Component Decomposition (Stacked Area)',
+    chart6:'3. Scenario Fan (Multi-Run Overlay)',
+    chart7:'4. Component Decomposition (Stacked Area)',
     chart_gap:'6. Causal Gap (Hallucination Gap)',
-    // See the RU note on the skipped number 6.
-    chart8:'6. Embodiment: distribution and real-world robotics',
+    chart8:'5. Embodiment: distribution and real-world robotics',
     tip1:'Probability Density Function (PDF) approximation of stopping times τ = inf {t : C(t) ≥ C_crit}. Computed via Monte Carlo integration (N=3000) over the posterior particle ensemble.',
     tip3:'Empirical Cumulative Distribution Function (CDF), F(t) = P(T ≤ t). One curve per stage — T1, T2, T3 and T4 — giving the probability that stage is reached no later than each year on the x axis.',
-    tip5:'Sensitivity heatmap. Vertical axis is the ARC-AGI level, horizontal axis is the SWE-bench level, and each cell holds the median number of years to T3 for that benchmark pair.',
     tip6:'Projection of 30 stochastic trajectories C(t) from the ensemble. Visualizes phase transitions (paradigm shifts), RSI feedback loops, and endogenous shocks (bubble bursts, moratoriums).',
     tip7:'Log-space decomposition ∫₀ᵗ (k_hw + k_algo + k_rsi) dt. Areas represent the integral contribution of hardware scaling, algorithmic efficiency, paradigm shifts, and recursive feedback (RSI).',
     tip_gap:'Epistemic divergence between cognitive capacity (Reasoning) and causal grounding (World Modeling). A high-risk zone where R(t) ≫ W(t), characterized by structural hallucinations.',
@@ -2526,10 +2454,7 @@ const LANG = {
     live_swarm_p5:'What affects it: the current observation set, particle weights, MC run randomness. A stable picture means model confidence; a chaotic one means high uncertainty.',
     ch1_xlabel:'Year', ch1_ylabel:'Runs',
     ch3_xlabel:'Year', ch3_ylabel:'P(%)', ch3_pt2:'P(T2)', ch3_pt4:'P(T4)',
-    // Stage name must match runSensitivityMatrixAsync's default.
-    ch5_label:'Years to T3', ch5_colorbar:'Years to T3', ch5_xaxis:'SWE-bench (%)', ch5_yaxis:'ARC-AGI (%)', ch5_loading:'Computing matrix (async)...',
     ch7_ylabel:'Cumulative contribution (log FLOPs)',
-    // See the RU note: this key was read by c6/c7 but never defined here either.
     ch2_xlabel:'Year',
     ch8_median:'Median (MC)', ch8_p1090:'p10..p90', ch8_p2575:'p25..p75', ch8_real:'Real robots', ch8_t4req:'T4 requirement', ch8_bypass:'HW bypass', ch8_y_main:'Embodiment (0..10)', ch8_x_hist:'embodiment_ceiling', ch8_y_hist:'# particles',
     fY_suffix:' yrs', fY_gt:'> 40 yrs', fY_achieved:'already achieved',

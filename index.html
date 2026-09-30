@@ -1171,29 +1171,11 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
     <div class="chart-container" id="c3"></div>
   </div>
 
-  <!-- ROW 5: Чувствительность (график | описание) -->
-  <div class="card">
-    <span class="card-tag" style="background:rgba(6,182,212,.15);color:var(--cyan)" data-i18n="tag5">Чувствительность</span>
-    <div class="card-header">
-      <h3 data-i18n="chart5">3. Чувствительность срока T3 к бенчмаркам (ARC-AGI × SWE-bench)</h3>
-      <span class="tip">?<span class="tip-text" data-i18n="tip5">Тепловая карта: по вертикали — уровень ARC-AGI, по горизонтали — уровень SWE-bench. Цвет ячейки — медианное число лет до T3 при таком сочетании бенчмарков. Показывает, какой из них сильнее двигает срок.</span></span>
-    </div>
-    <div class="chart-container" id="c5"></div>
-  </div>
-
-  <div class="desc-card">
-    <span class="card-tag" style="background:rgba(6,182,212,.15);color:var(--cyan)">Sensitivity Map</span>
-    <div class="desc-body">
-      <p data-i18n="sens_p1">Карта чувствительности: как прогноз зависит от последнего наблюдения Intelligence &times; Agentic. Ячейка (i,j) = медианный год AGI если последнее наблюдение = (Intel=i, Agentic=j).</p>
-      <p data-i18n="sens_p2"><b>Вычисление:</b> для каждой пары (i,j) из сетки [40,45,...,85] &times; [10,20,...,100] выполняется <code>runSensitivityMatrix()</code> — берётся текущий tracker, клонируются частицы, заменяется последнее наблюдение на (i,j), запускается MC.</p>
-      <p data-i18n="sens_p3"><b>Интерпретация цвета:</b> синий = ранний AGI (модель «верит» что мы близко); красный = поздний AGI (далеко). Градиенты показывают, какой параметр доминирует:</p>
-      <ul>
-        <li data-i18n="sens_li1">Вертикальный градиент → доминирует Intelligence</li>
-        <li data-i18n="sens_li2">Горизонтальный градиент → доминирует Agency</li>
-        <li data-i18n="sens_li3">Диагональный → оба параметра равноценны</li>
-      </ul>
-      <p data-i18n="sens_p4"><b>Что влияет:</b> текущий posterior (после всех наблюдений), архитектура модели (slope reasoning/agency, потолки). Смотрите — сдвиг на 1 пункт по какой оси сильнее всего сдвигает прогноз.</p></div>
-  </div>
+  <!-- ROW 5 was the ARC-AGI x SWE-bench sensitivity heatmap (c5). Removed: it was
+       the only chart drawn through await (a 6x8 grid of full Monte Carlo runs),
+       so it was the slowest thing on the page, and the information it carried was
+       a restatement of what the histogram already shows. runSensitivityMatrixAsync
+       is still on the engine for headless use. -->
 
   <!-- ROW 6: Веер сценариев (описание | график) -->
   <div class="desc-card">
@@ -1209,7 +1191,7 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
   <div class="card">
     <span class="card-tag" style="background:rgba(34,197,94,.15);color:var(--green)" data-i18n="tag6">Сценарии</span>
     <div class="card-header">
-      <h3 data-i18n="chart6">4. Веер сценариев (Multi-Run Overlay)</h3>
+      <h3 data-i18n="chart6">3. Веер сценариев (Multi-Run Overlay)</h3>
       <span class="tip">?<span class="tip-text" data-i18n="tip6">30 случайных прогонов из апостериорного распределения, наложенных полупрозрачно. Показывает разброс возможных путей к сингулярности.</span></span>
     </div>
     <div class="chart-container" id="c6"></div>
@@ -1219,7 +1201,7 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
   <div class="card">
     <span class="card-tag" style="background:rgba(240,136,62,.15);color:var(--orange)" data-i18n="tag7">Декомпозиция</span>
     <div class="card-header">
-      <h3 data-i18n="chart7">5. Вклад компонент (Stacked Area)</h3>
+      <h3 data-i18n="chart7">4. Вклад компонент (Stacked Area)</h3>
       <span class="tip">?<span class="tip-text" data-i18n="tip7">Разбивка capability на составляющие: Hardware scaling, Algorithmic progress, Paradigm shift bonus, RSI feedback. Показывает, что двигает прогресс.</span></span>
     </div>
     <div class="chart-container" id="c7"></div>
@@ -1243,7 +1225,7 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
   <div class="card">
     <span class="card-tag" style="background:rgba(167,139,250,.15);color:var(--purple)" data-i18n="tag8">Embodiment</span>
     <div class="card-header">
-      <h3 data-i18n="chart8">6. Embodiment: распределение и реальная робототехника</h3>
+      <h3 data-i18n="chart8">5. Embodiment: распределение и реальная робототехника</h3>
       <span class="tip">?<span class="tip-text" data-i18n="tip8">Нижний график — гистограмма embodiment_ceiling по 1000 частицам. Верхний — медиана (p10..p90) прогноза embodiment с наложением реальных роботов (жёлтые точки: Spot, Optimus, Figure, 1X Neo, ...). Красная черта = порог T4, зелёная = bypass.</span></span>
     </div>
     <div class="chart-container" id="c8"></div>
