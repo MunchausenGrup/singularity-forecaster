@@ -58,19 +58,25 @@ body{font-family:var(--font);background:var(--bg-primary);color:var(--text-prima
 .app{display:flex;flex-direction:column}
 
 /* ===== HEADER ===== */
-.header{background:linear-gradient(135deg,var(--bg-secondary),var(--bg-primary));border-bottom:1px solid var(--border);padding:20px 32px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;position:sticky;top:0;z-index:100;backdrop-filter:blur(20px)}
-.header-left{display:flex;align-items:center;gap:14px}
+.header{background:linear-gradient(135deg,var(--bg-secondary),var(--bg-primary));border-bottom:1px solid var(--border);padding:20px 32px;display:flex;align-items:center;justify-content:space-between;/* nowrap, not wrap. Flexbox decides line breaks from each item's HYPOTHETICAL
+       main size (flex-basis clamped by min-width) and only THEN shrinks items to
+       fit the line they landed on. So with wrap, the 211px title block and the
+       81px toggle broke onto two lines at 320px, and min-width:0 could not
+       save them -- they never got a line to be shrunk inside. nowrap forces one
+       line, after which .header-left genuinely shrinks and the title wraps. */
+flex-wrap:nowrap;gap:16px;position:sticky;top:0;z-index:100;backdrop-filter:blur(20px)}
+.header-left{display:flex;align-items:center;gap:14px;min-width:0;flex:1 1 auto}
+.header-left>div{min-width:0}
 .logo{width:38px;height:38px;background:linear-gradient(135deg,var(--accent),var(--purple));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:700;color:#fff;flex-shrink:0}
 .logo-infinity{font-size:1.5rem;line-height:1;animation:infinity-pulse 2.4s ease-in-out infinite;filter:drop-shadow(0 0 8px rgba(88,166,255,.6))}
 @keyframes infinity-pulse{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.15);opacity:1;filter:drop-shadow(0 0 14px rgba(88,166,255,.9))}}
 .header h1{font-size:1.3rem;font-weight:700;background:linear-gradient(135deg,var(--text-primary),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .header .subtitle{font-size:.78rem;color:var(--text-muted);margin-top:1px}
-.header-right{display:flex;align-items:center;gap:10px}
-.lang-toggle{display:flex;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden}
+.header-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.lang-toggle{display:flex;flex-shrink:0;white-space:nowrap;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden}
 .lang-btn{padding:5px 14px;font-size:.76rem;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--text-secondary);transition:var(--transition);font-family:var(--font)}
 .lang-btn.active{background:var(--accent);color:#fff}
 .lang-btn:hover:not(.active){color:var(--text-primary)}
-.version{font-size:.7rem;color:var(--text-muted);font-family:var(--mono);background:var(--bg-card);padding:5px 10px;border-radius:var(--radius-sm);border:1px solid var(--border)}
 
 /* ===== STATUS BAR ===== */
 .status-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--border);margin:0}
@@ -307,7 +313,12 @@ body{font-family:var(--font);background:var(--bg-primary);color:var(--text-prima
      holds in that case too. */
   .btn{padding:11px 18px;font-size:.82rem;min-height:44px}
   .btn-sm{padding:9px 14px}
-  .lang-btn{padding:9px 16px}
+  /* The RU/EN pair must sit on the SAME row as the title. At a true 375px the
+     header measured header-left 211px + header-right 155px against a 343px
+     content box, so flex-wrap:wrap pushed the toggle to line 2. Dropping the
+     version badge removed 57px of that, and 12px side padding instead of 16px
+     keeps the pair (82px) beside the title down to 320px. */
+  .lang-btn{padding:9px 12px}
   .expert-toggle{min-height:48px}
   .expert-param input[type=range]{height:24px}
   .lang-btn,.tab-btn,.btn-sm{min-height:44px}
@@ -320,6 +331,11 @@ body{font-family:var(--font);background:var(--bg-primary);color:var(--text-prima
    long unbroken Russian strings would otherwise still force the box wide. */
 @media(max-width:380px){
   .tip-text{max-width:calc(100vw - 24px);font-size:.68rem}
+  /* 320px: the RU/EN pair is 81px and the gap is 10px, so the title block has
+     ~197px of room. The title wraps to two lines there, which is fine; what
+     matters is that the toggle stays on the first row. */
+  .header{gap:10px;padding:12px 14px}
+  .header h1{font-size:.95rem}
 }
 
 /* Coarse pointers get the larger tap targets regardless of width — a tablet
@@ -440,10 +456,9 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
       <div class="subtitle" id="hdr_sub" data-i18n="hdr_sub">v6.0 — Четыре стадии отлучения</div>
     </div>
   </div>
-    <div class="header-right">
-      <div class="version" id="version">v6.0</div>
+  <div class="header-right">
     <div class="lang-toggle">
-      <button class="lang-btn active" id="lang_ru" onclick="setLang('ru')">RU</button>
+    <button class="lang-btn active" id="lang_ru" onclick="setLang('ru')">RU</button>
       <button class="lang-btn" id="lang_en" onclick="setLang('en')">EN</button>
     </div>
   </div>

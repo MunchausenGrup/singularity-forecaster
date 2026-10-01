@@ -4209,14 +4209,9 @@ function setLang(lang) {
     const m = /^\[(title|placeholder|aria-label)\](.+)$/.exec(key);
     if (m && t[m[2]] !== undefined) el.setAttribute(m[1], t[m[2]]);
   });
-  // The version badge is derived from hdr_sub rather than carrying its own
-  // string. It used to be a hardcoded "v4" in the HTML with no data-i18n key,
-  // so the header rendered "v4" next to "v5.4 — …" and neither language switch
-  // nor a version bump could ever update it. Parsing the badge out of the one
-  // string that is already versioned makes a half-applied bump impossible.
-  const verMatch = /^v[\d.]+/.exec(t.hdr_sub || '');
-  const badge = document.getElementById('version');
-  if (verMatch && badge) badge.textContent = verMatch[0];
+  // The standalone version badge was removed from the header: at phone widths it
+  // pushed the RU/EN toggle onto a second line, and it only ever repeated what
+  // hdr_sub already says ("v6.0 — …"). One version string, one place.
   // Re-draw canvases with new language
   if (typeof swarmDraw === 'function') swarmDraw();
   if (typeof ehDraw === 'function') ehDraw();
