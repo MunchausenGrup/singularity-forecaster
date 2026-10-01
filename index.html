@@ -1262,6 +1262,29 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
       <p data-i18n="emb_p4"><b>Real robotics prior:</b> <code>realRoboticsWeight</code> (0&hellip;1) в Expert Panel управляет силой likelihood-штрафа за отклонение <code>embodiment_ceiling</code> от реальных роботов. weight=0 — игнор, weight=1 — строгое следование.</p></div>
   </div>
 
+  <!-- ROW 9: Каузальный разрыв R/W. The container was missing from the markup
+       while plotHallucinationGap() had been called since it was written, so the
+       function returned at its guard and the chart never rendered. Verified by
+       grepping every Plotly.newPlot target against the ids present in this file:
+       c1/c3/c6/c7/c8 had containers, c_gap did not, in any commit. -->
+  <div class="card">
+    <span class="card-tag" style="background:rgba(234,179,8,.15);color:#eab308" data-i18n="gapg_tag">Grounding</span>
+    <div class="card-header">
+      <h3 data-i18n="chart_gap">6. Каузальный разрыв (Hallucination Gap)</h3>
+      <span class="tip">?<span class="tip-text" data-i18n="gapg_tip">Reasoning (R) против модели мира (W). Красная область — reasoning опережает заземление: способность растёт быстрее, чем модель мира, по которой её можно проверить. Зелёная — заземление догнало. До появления groundingRate зазор не закрывался ни разу (R/W = 1.85–3.12); теперь R/W = 1.40–2.45, потому что часть нового reasoning заземляется.</span></span>
+    </div>
+    <div class="chart-container" id="c_gap"></div>
+  </div>
+
+  <div class="desc-card">
+    <span class="card-tag" style="background:rgba(234,179,8,.15);color:#eab308">Grounding</span>
+    <div class="desc-body">
+      <p data-i18n="gapg_p1"><b>Зазор R &minus; W</b> &mdash; расстояние между тем, насколько хорошо система рассуждает, и тем, насколько хорошо она знает мир, в котором действует. T4 требует физического заземления, а заземление требует модели мира, поэтому растущий разрыв отодвигает T4, а не приближает его.</p>
+      <p data-i18n="gapg_p2"><b>Почему зазор закрывается.</b> <code>groundingRate</code> &mdash; доля нового reasoning, которая заземляется в пригодную модель мира, а не остаётся выводом. Поглощение ограничено (<code>groundingRateMax</code>), поэтому reasoning может обгонять заземление; до matter доходит лишь <code>groundingEfficiency</code> его, поскольку датчики и энергия ограничены независимо от качества рассуждений.</p>
+      <p data-i18n="gapg_p3"><b>Цена заземления.</b> Оно отвлекает усилие от получения результата: <code>groundingLabourCost</code> вычитается из агенции. Без этой стоимости заземление было бы чистой субсидией — разрыв закрывался бы, а T3 наступал бы <i>раньше</i>, что на бумаге выглядит улучшением и на деле означает худшую модель.</p>
+    </div>
+  </div>
+
 
   <!-- ROW 8: Сфера Сингулярности (описание | график) -->
   <div class="desc-card">

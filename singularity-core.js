@@ -2166,7 +2166,7 @@ function updateUI(r) {
   requestAnimationFrame(() => {
     try { plotScenarioFan(tracker); } catch(e) { console.error('c6:', e); }
     try { plotDecomposition(tracker); } catch(e) { console.error('c7:', e); }
-    try { plotHallucinationGap(r.gapTrajectory); } catch(e) { console.error('c_gap:', e); }
+    try { plotGroundingGap(r.gapTrajectory); } catch(e) { console.error('c_gap:', e); }
     try { plotEmbodimentDiagnostics(tracker, r.embodimentTrajectory); } catch(e) { console.error('c8:', e); }
   });
 
@@ -2371,7 +2371,7 @@ function plotEmbodimentDiagnostics(tracker, embodimentTrajectory) {
   Plotly.newPlot('c8', traces, layout, PLOT_CFG);
 }
 
-function plotHallucinationGap(gt) {
+function plotGroundingGap(gt) {
   const t = LANG[window._lang || 'ru'];
   const gapContainer = document.getElementById('c_gap');
   if (!gapContainer) return;
@@ -2437,8 +2437,8 @@ function plotHallucinationGap(gt) {
     };
   }
 
-  const redTrace = buildFillTrace(redX, redY, 'rgba(239,68,68,0.3)', t.gap_red_zone || 'Зона галлюцинаций (R > W)');
-  const greenTrace = buildFillTrace(greenX, greenY, 'rgba(34,197,94,0.25)', t.gap_green_zone || 'Зона согласования (W ≥ R)');
+  const redTrace = buildFillTrace(redX, redY, 'rgba(239,68,68,0.3)', t.gap_red_zone);
+  const greenTrace = buildFillTrace(greenX, greenY, 'rgba(34,197,94,0.25)', t.gap_green_zone);
 
   // Dotted R=W reference line: find where R crosses W
   const traces = [];
@@ -2449,13 +2449,13 @@ function plotHallucinationGap(gt) {
   traces.push({
     x: years, y: gt.reasoning,
     type: 'scatter', mode: 'lines',
-    name: 'Reasoning (R)',
+    name: t.gapg_series_r,
     line: { color: '#a78bfa', width: 2.5 },
   });
   traces.push({
     x: years, y: gt.wm,
     type: 'scatter', mode: 'lines',
-    name: 'World Modeling (W)',
+    name: t.gapg_series_w,
     line: { color: '#22c55e', width: 2.5 },
   });
 
@@ -2463,32 +2463,45 @@ function plotHallucinationGap(gt) {
   // Actually, let's draw a line through points where R=W (interpolated crossings)
   // For simplicity, draw the lower envelope (W) as baseline and label gap
 
+  // The x range was a hardcoded [2026, 2045] while the trajectory runs to 2066.
+  // Everything past 2045 was silently clipped -- including the annotations,
+  // which sat at year 2054 and therefore rendered nowhere. Both now follow the
+  // data.
+  const yrLo = years[0], yrHi = years[n - 1];
+  const maxR = Math.max(...gt.reasoning);
+  const annotations = [{
+    x: yrLo + (yrHi - yrLo) * 0.62,
+    y: maxR * 0.62,
+    text: t.gapg_ann_red,
+    showarrow: false,
+    font: { color: '#ef4444', size: 11 }
+  }];
+  // Only claim a grounded zone if one exists. Measured on the median
+  // trajectory, R > W in 480 of 480 years -- grounding narrows the gap but
+  // never closes it at the median -- so the green band was a legend entry for
+  // a band that never appears. Annotating it would be the same caption/content
+  // mismatch this page already had twice.
+  if (greenTrace) {
+    annotations.push({
+      x: yrLo + (yrHi - yrLo) * 0.62,
+      y: maxR * 0.12,
+      text: t.gapg_ann_green,
+      showarrow: false,
+      font: { color: '#22c55e', size: 11 }
+    });
+  }
+
   const layout = {
     ...LAYOUT_BASE,
-    title: { text: t.ch_gap_title || t.chart_gap || 'Каузальный разрыв (Hallucination Gap)', font: { size: 14, color: '#eab308' } },
-    xaxis: { ...LAYOUT_BASE.xaxis, title: { text: t.ch2_xlabel || 'Год' }, range: [2026, 2045] },
+    title: { text: t.chart_gap, font: { size: 14, color: '#eab308' } },
+    xaxis: { ...LAYOUT_BASE.xaxis, title: { text: t.ch2_xlabel }, range: [yrLo, yrHi] },
     yaxis: {
       ...LAYOUT_BASE.yaxis,
-      title: { text: t.gap_y_axis || 'Capability (0..15)' },
-      range: [0, Math.max(16, ...gt.reasoning) * 1.1],
+      title: { text: t.gap_y_axis },
+      range: [0, maxR * 1.15],
     },
     legend: { ...LAYOUT_BASE.legend, orientation: 'h', y: -0.25 },
-    annotations: [
-      {
-        x: years[Math.floor(n * 0.7)],
-        y: Math.max(...gt.reasoning) * 0.85,
-        text: 'R > W → галлюцинации',
-        showarrow: false,
-        font: { color: '#ef4444', size: 10 }
-      },
-      {
-        x: years[Math.floor(n * 0.7)],
-        y: Math.max(...gt.reasoning) * 0.15,
-        text: 'W ≥ R → согласование',
-        showarrow: false,
-        font: { color: '#22c55e', size: 10 }
-      }
-    ],
+    annotations,
   };
 
   Plotly.newPlot('c_gap', traces, layout, PLOT_CFG);
@@ -2689,13 +2702,13 @@ const LANG = {
     // at every benchmark pair, so a T2 heatmap was a flat block of colour.
     chart6:'3. Веер сценариев (Multi-Run Overlay)',
     chart7:'4. Вклад компонент (Stacked Area)',
-    chart_gap:'6. Каузальный разрыв (Hallucination Gap)',
+    chart_gap:'6. Каузальный разрыв: заземление (Grounding Gap)',
     chart8:'5. Embodiment: распределение и реальная робототехника',
     tip1:'Аппроксимация функции плотности вероятности (PDF) моментов достижения пороговых состояний τ = inf {t : C(t) ≥ C_crit}. Рассчитано методом Монте-Карло (N=3000) на основе сэмплирования из апостериорного распределения частиц.',
     tip3:'Эмпириальная кумулятивная функция распределения (CDF), F(t) = P(T ≤ t). По одной кривой на каждый этап — T1, T2, T3, T4: вероятность, что этап достигнут не позднее соответствующего года по оси X.',
     tip6:'Проекция 30 стохастических траекторий C(t) из ансамбля. Визуализирует фазовые переходы (смены парадигм), эффекты RSI и влияние эндогенных шоков (схлопывание пузырей, моратории).',
     tip7:'Декомпозиция логарифмического роста ∫₀ᵗ (k_hw + k_algo + k_rsi) dt. Площади отражают интегральный вклад аппаратного масштабирования, алгоритмической эффективности, парадигмальных сдвигов и рекурсивной обратной связи (RSI).',
-    tip_gap:'Эпистемическая дивергенция между когнитивной мощностью (Reasoning) и каузальным согласованием (World Modeling). Зона высокого риска, где R(t) ≫ W(t), характеризующаяся структурными галлюцинациями.',
+    tip_gap:'Эпистемическая дивергенция между когнитивной мощностью (Reasoning) и каузальным согласованием (World Modeling). Зона высокого риска, где R(t) ≫ W(t): reasoning опережает модель мира, по которой его можно проверить. До groundingRate зазор был структурным дефектом модели, а не физическим явлением.',
     tip8:'Марковская оценка латентной переменной Embodiment. Верхняя панель: перцентильный коридор прогноза E(t) с эмпирической калибровкой на индексе реальной робототехники. Нижняя панель: маргинальное распределение E_ceiling в апостериорном ансамбле.',
     ch_t1:'T1: Доминирование', ch_t2:'T2: Предсказуемость', ch_t3:'T3: Захват институтов', ch_t4:'T4: Зависимость',
     // The live-swarm captions carried data-i18n keys in the markup but were
@@ -2730,7 +2743,6 @@ const LANG = {
     arch_tracker_desc:'Ансамбль из N=1000 частиц. При поступлении вектора наблюдений (бенчмарков) веса гипотез обновляются через гауссово правдоподобие. Chatbot Arena Elo теперь напрямую калибрует параметр P (Persuasion) — убедительность ИИ, отсекая маловероятные сценарии развития.',
     arch_dims_title:'Когнитивный и Социотехнический слои',
     arch_dims_desc:'Базис: Reasoning (R), World Modeling (W), Agency (A), Embodiment (E). Над ними надстроен социотехнический слой: Persuasion (P) — убедительность, Delegation Pressure (DP) — давление делегирования, Institutional Legitimacy (IL) — легализация, Institutional Capture (IC) — захват институтов, и Dependency Ratio (DR) — зависимость цивилизации.',
-    ch_gap_title: '6. Каузальный разрыв (Hallucination Gap)',
     arch_paradigm_title:'Стохастические сдвиги парадигм',
     arch_paradigm_desc:'Преодоление структурных лимитов моделируется как пуассоновский процесс. Интенсивность возрастает при насыщении науки и избытке капитала (Compute Overhang). Эффективность каждого последующего сдвига затухает.',
     arch_rsi_title:'Динамика RSI (Recursive Self-Improvement)',
@@ -2815,9 +2827,21 @@ const LANG = {
     swarm_play_forecast:'Анимация',
     swarm_canvas_legend_median:'Медиана',
     // Hallucination gap
+    // Grounding gap chart (c_gap). Names prefixed gapg_ because tip_gap is
+    // ALREADY taken by the c7 decomposition caption ("epistemic divergence") --
+    // reusing it would have silently overwritten that tooltip.
+    gapg_series_r:'Reasoning (R)',
+    gapg_series_w:'Модель мира (W)',
+    gapg_ann_red:'R > W → заземление отстаёт',
+    gapg_ann_green:'W ≥ R → заземление догнало',
+    gapg_tag:'Заземление',
+    gapg_tip:'Reasoning (R) против модели мира (W). Красная область — reasoning опережает заземление: способность растёт быстрее, чем модель мира, по которой её можно проверить. Зелёная — заземление догнало. До groundingRate зазор не закрывался ни разу (R/W = 1.85–3.12); теперь R/W = 1.40–2.45, потому что часть нового reasoning заземляется.',
+    gapg_p1:'<b>Зазор R &minus; W</b> &mdash; расстояние между тем, насколько хорошо система рассуждает, и тем, насколько хорошо она знает мир, в котором действует. T4 требует физического заземления, а заземление требует модели мира, поэтому растущий разрыв отодвигает T4, а не приближает его.',
+    gapg_p2:'<b>Почему зазор закрывается.</b> <code>groundingRate</code> &mdash; доля нового reasoning, которая заземляется в пригодную модель мира, а не остаётся выводом. Поглощение ограничено (<code>groundingRateMax</code>), поэтому reasoning может обгонять заземление; до matter доходит лишь <code>groundingEfficiency</code> его, поскольку датчики и энергия ограничены независимо от качества рассуждений.',
+    gapg_p3:'<b>Цена заземления.</b> Оно отвлекает усилие от получения результата: <code>groundingLabourCost</code> вычитается из агенции. Без этой стоимости заземление было бы чистой субсидией — разрыв закрывался бы, а T3 наступал бы <i>раньше</i>, что на бумаге выглядит улучшением и на деле означает худшую модель.',
     gap_red_zone:'Зона невыполненного заземления (R > W)',
     gap_green_zone:'Зона заземления (W ≥ R)',
-    gap_y_axis:'Capability (0..15)',
+    gap_y_axis:'Capability (лог. шкала)',
     // Embodiment chart
     ch8_hist:'Частиц',
     ch8_p10:'p10',
@@ -3022,13 +3046,13 @@ const LANG = {
     chart3:'2. Cumulative Probability (CDF)',
     chart6:'3. Scenario Fan (Multi-Run Overlay)',
     chart7:'4. Component Decomposition (Stacked Area)',
-    chart_gap:'6. Causal Gap (Hallucination Gap)',
+    chart_gap:'6. Causal Gap: grounding (Grounding Gap)',
     chart8:'5. Embodiment: distribution and real-world robotics',
     tip1:'Probability Density Function (PDF) approximation of stopping times τ = inf {t : C(t) ≥ C_crit}. Computed via Monte Carlo integration (N=3000) over the posterior particle ensemble.',
     tip3:'Empirical Cumulative Distribution Function (CDF), F(t) = P(T ≤ t). One curve per stage — T1, T2, T3 and T4 — giving the probability that stage is reached no later than each year on the x axis.',
     tip6:'Projection of 30 stochastic trajectories C(t) from the ensemble. Visualizes phase transitions (paradigm shifts), RSI feedback loops, and endogenous shocks (bubble bursts, moratoriums).',
     tip7:'Log-space decomposition ∫₀ᵗ (k_hw + k_algo + k_rsi) dt. Areas represent the integral contribution of hardware scaling, algorithmic efficiency, paradigm shifts, and recursive feedback (RSI).',
-    tip_gap:'Epistemic divergence between cognitive capacity (Reasoning) and causal grounding (World Modeling). A high-risk zone where R(t) ≫ W(t), characterized by structural hallucinations.',
+    tip_gap:'Epistemic divergence between cognitive capacity (Reasoning) and causal grounding (World Modeling). A high-risk zone where R(t) ≫ W(t): reasoning outruns the world model it could be checked against. Before groundingRate the gap was a structural defect of the model rather than a physical phenomenon.',
     tip8:'Markov estimation of the Embodiment latent variable. Top: percentile corridor of E(t) calibrated against empirical robotic indices. Bottom: marginal posterior distribution of the E_ceiling parameter.',
     ch_t1:'T1: Dominance', ch_t2:'T2: Predictability', ch_t3:'T3: Capture', ch_t4:'T4: Dependency',
     // Live swarm captions — see the RU note on why these were missing.
@@ -3056,7 +3080,6 @@ const LANG = {
     arch_tracker_desc:'An ensemble of N=1000 particles. Upon receiving benchmark observations, hypothesis weights update via Gaussian likelihood. Chatbot Arena Elo now directly calibrates the P (Persuasion) parameter, pruning unlikely scenarios.',
     arch_dims_title:'Cognitive and Sociotechnical Layers',
     arch_dims_desc:'Base space: Reasoning (R), World Modeling (W), Agency (A), Embodiment (E). Layered above is the sociotechnical framework: Persuasion (P), Delegation Pressure (DP), Institutional Legitimacy (IL), Institutional Capture (IC), and Dependency Ratio (DR).',
-    ch_gap_title: '6. Causal Gap (Hallucination Gap)',
     arch_paradigm_title:'Stochastic Paradigm Shifts',
     arch_paradigm_desc:'Overcoming structural architecture limits is modeled as a Poisson process. Intensity increases upon scientific saturation and capital surplus (Compute Overhang). The efficacy of subsequent shifts decays.',
     arch_rsi_title:'RSI Dynamics (Recursive Self-Improvement)',
@@ -3139,9 +3162,18 @@ const LANG = {
     swarm_play_forecast:'Animate',
     swarm_canvas_legend_median:'Median',
     // Hallucination gap
+    gapg_series_r:'Reasoning (R)',
+    gapg_series_w:'World Modeling (W)',
+    gapg_ann_red:'R > W → grounding lags',
+    gapg_ann_green:'W ≥ R → grounding caught up',
+    gapg_tag:'Grounding',
+    gapg_tip:'Reasoning (R) against world modelling (W). The red band is reasoning outrunning grounding: capability growing faster than the model of the world it could be checked against. Green is grounding having caught up. Before groundingRate the gap never closed (R/W = 1.85-3.12); it is now 1.40-2.45, because some of the new reasoning gets anchored.',
+    gapg_p1:'<b>The R &minus; W gap</b> &mdash; the distance between how well a system reasons and how well it knows the world it acts in. T4 requires physical grounding, and grounding requires a world model, so a widening gap pushes T4 further away rather than closer.',
+    gapg_p2:'<b>Why it closes.</b> <code>groundingRate</code> is the share of new reasoning that gets anchored into a usable world model instead of staying inference. Absorption is bounded (<code>groundingRateMax</code>), so reasoning can still outrun grounding, and only <code>groundingEfficiency</code> of it ever reaches matter, because sensors and energy are rate-limited regardless of how good the reasoning is.',
+    gapg_p3:'<b>What grounding costs.</b> It diverts effort away from getting things done: <code>groundingLabourCost</code> is subtracted from agency. Without that cost grounding would be a pure subsidy &mdash; the gap would close while T3 arrived sooner, which reads as an improvement and is a worse model.',
     gap_red_zone:'Ungrounded zone (R > W)',
     gap_green_zone:'Grounded zone (W ≥ R)',
-    gap_y_axis:'Capability (0..15)',
+    gap_y_axis:'Capability (log scale)',
     // Embodiment chart
     ch8_hist:'Particles',
     ch8_p10:'p10',
@@ -4139,6 +4171,14 @@ function setLang(lang) {
       plotDecomposition(tr);
       if (currentResults && currentResults.embodimentTrajectory) {
         plotEmbodimentDiagnostics(tr, currentResults.embodimentTrajectory);
+      }
+      // The grounding-gap chart was missing from this list, so its legend, axis
+      // titles and annotations stayed Russian after switching to English while
+      // the card caption above it flipped correctly. Measured before the fix:
+      // cardTitle "6. Causal Gap" next to a legend still reading
+      // "Зона невыполненного заземления".
+      if (currentResults && currentResults.gapTrajectory) {
+        plotGroundingGap(currentResults.gapTrajectory);
       }
     }
   } catch (e) {
