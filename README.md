@@ -2,7 +2,7 @@
 
 Probabilistic forecasting of four stages of technological institutional transition (T1–T4), built as a Bayesian particle filter over a single shared physics kernel. Runs entirely client-side; deployed on Cloudflare Pages.
 
-**Live:** https://singularity-forecaster.pages.dev
+**Live:** https://munchausen.site/forecaster
 
 ## What the model does
 
@@ -25,18 +25,29 @@ Instead of extrapolating raw intelligence, the model treats the transition as an
 | T3 | `IC > 0.6` | Institutional capture; shutting the system down causes collapse |
 | T4 | `DR > 0.9` and `E ≥ 6` | Civilizational dependency, including physical (atomic) control |
 
-T4 is gated on embodiment because civilisation cannot become fully dependent on a system that does not control matter. T3 (institutional) therefore fires well before T4 (institutional **and** physical) — a ~10 year lead in the default posterior.
+T4 is gated on embodiment because civilisation cannot become fully dependent on a system that does not control matter. T3 (institutional) therefore fires before T4 (institutional **and** physical). Under the default posterior the lead is about 5.5 years: T3 median 9.1y, T4 median 14.6y. The exact figures move with particle count and seed; the ordering does not.
 
 ### Current forecast status
 
-With the bundled benchmark history, **T1 and T2 are already in the past** (medians −0.7y and −0.2y). The UI reports these as `уже достигнуто` / `already achieved` rather than as negative-year forecasts. T3 and T4 remain genuine forward-looking horizons.
+With the bundled benchmark history, **T1 and T2 are already in the past**, so they carry no forecast information. Measured at `setSeed(3)`, 600 particles, 500 Monte Carlo runs, expert defaults:
+
+| Stage | Median, years from present | Absolute year | Already reached | p10..p90 |
+|-------|---------------------------|---------------|-----------------|----------|
+| T1 | −1.17 | 2025.58 | 100.0% | −1.25 .. −1.17 |
+| T2 | −0.33 | 2026.42 | 96.2% | −0.42 .. −0.17 |
+| T3 | +9.08 | 2035.83 | 0.0% | +6.17 .. +14.67 |
+| T4 | +14.58 | 2041.33 | 0.0% | +14.50 .. +15.58 |
+
+Years are relative to the pinned present, 2026.75. T1 and T2 are reported as `уже достигнуто` / `already achieved` rather than as negative-year forecasts; T3 and T4 are the genuine forward-looking horizons.
+
+T2's gate is not a constant, it is simply met early under the default calibration. Raising the institutional-legitimacy threshold from 0.3 to 0.6 moves its median to 2027.75 and drops the already-reached share to 0%; 0.8 moves it to 2029.25. A forecast panel showing P(T2) = 100% at its default cutoff is a tautology, not a finding — the panel reports P(T2 <= cutoff), so a stage already in the past always reads 100%.
 
 ## Architecture
 
 ```
 index.html            SPA shell, Expert Sandbox UI
 singularity-core.js   model: kernel, particle filter, Monte Carlo, charts
-test/verify.js        headless verification suite (22 checks, no browser)
+test/verify.js        headless verification suite (38 checks, no browser)
 ```
 
 ### Single physics kernel
@@ -50,10 +61,14 @@ There is now exactly one `stepDynamics()` function. `simulateToYear()` (likeliho
 All randomness flows through a seeded mulberry32 PRNG (`setSeed()` / `rnd()`); there is no `Math.random()` anywhere in the model. The likelihood path re-seeds per observation year so a particle's predicted capabilities are stable across repeated evaluations, while the forecast path explores the full shock distribution.
 
 ```js
-setSeed(42);          // deterministic from here on
-const t = new BayesianTracker(1000);
-for (const obs of benchmarkHistory) t.observeRealData(obs.year, obs);
-const mc = t.runMonteCarloForecast(3000);
+setSeed(42);                                 // deterministic from here on
+const t = new ParticleFilterTracker(1000);
+for (const obs of FALLBACK_BENCHMARK_HISTORY) t.observeRealData(obs.year, obs);
+const mc = t.runMonteCarloForecast(500);     // 500 = display trajectories; the stage histogram uses 3000
+
+// FALLBACK_BENCHMARK_HISTORY is the engine's own export, and it is what the app
+// ends up using at runtime because the remote endpoint 404s. There is no global
+// named benchmarkHistory, so an example using one cannot run.
 ```
 
 ### Likelihood
@@ -62,10 +77,11 @@ const mc = t.runMonteCarloForecast(3000);
 
 ## Caveats
 
-- Absolute probabilities are **not calibrated** in the frequentist sense. They are conditional on the prior, the noise model (`σ`), and the 15-point fallback dataset. Only relative comparisons across parameter settings are meaningful.
-- The benchmark data is a **hardcoded fallback**. The configured remote JSON endpoint currently returns 404, so the app always runs on the embedded dataset (last point: 2026.44). The endpoint constant is at the top of `singularity-core.js`.
+- Absolute probabilities are **not calibrated** in the frequentist sense. They are conditional on the prior, the noise model (`σ`), and the 17-row fallback dataset. Only relative comparisons across parameter settings are meaningful.
+- The benchmark data is a **hardcoded fallback**. The configured remote JSON endpoint currently returns 404, so the app always runs on the embedded dataset (17 rows, 2022.90 to 2026.72, last point Claude Opus 5.5). The endpoint constant is at the top of `singularity-core.js`.
 - The FLOPs observation channel is a deterministic function of Reasoning, so it cannot independently identify the hardware trajectory. It is retained for continuity but is largely redundant.
 - Results are sensitive to `observationNoiseSigma`; conclusions about T3/T4 move as it changes.
+- The stage-history chart is **not a strict decomposition** of the growth it depicts. The hardware band is a remainder computed as a difference of log-FLOPs, while the recursive, algorithmic and paradigm bands are `algoK`-scale rates, so the stack does not sum to the total and overshoots it once the remainder clamps at zero. The bands are individually meaningful and individually honest about their own units; only the sum is not meaningful, so do not read the total off the stack.
 
 ## Development
 
@@ -83,7 +99,7 @@ Auto-deploy: pushing to `main` triggers `.github/workflows/deploy.yml`, which ne
 node test/verify.js
 ```
 
-Runs the model headless in a `vm` sandbox with DOM stubs and asserts 22 properties: PRNG determinism, likelihood stability, seed sensitivity, T4 gate reachability, T3/T4 separability, past-milestone handling, per-dimension ceilings, product-likelihood behaviour, hypothesis discrimination, and that all public methods return finite data.
+Runs the model headless in a `vm` sandbox with DOM stubs and asserts 38 properties: PRNG determinism, likelihood stability, seed sensitivity, T4 gate reachability, T3/T4 separability, past-milestone handling, per-dimension ceilings, product-likelihood behaviour, hypothesis discrimination, and that all public methods return finite data.
 
 ## Data sources
 
