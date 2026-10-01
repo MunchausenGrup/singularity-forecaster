@@ -244,6 +244,64 @@ try { const s = T2.getSummary(); check('getSummary', isFinite(s.agencyCeiling), 
     'embodiment threshold is a real requirement, not zero');
 }
 
+// The grounding cap: groundingRateMax enters as
+//   min(groundingRateMax, groundingRate * (R / ceilingR))
+// and R/ceilingR <= 1, so the inner expression can never exceed groundingRate.
+// At the shipped values (0.22 and 0.9) the cap therefore never engages --
+// measured 0 of 480 monthly steps. The page text used to claim "absorption is
+// bounded (groundingRateMax), so reasoning can still outrun grounding", which
+// was FALSE: the gap is held open by a low groundingRate growing with
+// R/ceilingR, not by the cap. Both RU and EN now say that instead.
+//
+// This test pins the condition under which that wording is accurate. If the cap
+// ever starts binding, it fails on purpose -- because then the wording is stale
+// and the sentence has to be rewritten rather than left to drift.
+{
+  const cfgC = G.createConfig();
+  const E = cfgC.EXPERT;
+  const partC = { hw_months: 6.0, algo_months: 4.5, agency_ceiling: 12.0,
+                  embodiment_ceiling: 6.0, world_model: 'slow_takeoff',
+                  rsi_efficiency: 1.0, veto_strength: 0.5 };
+  const stC = G.createSimState(partC, cfgC);
+  let binds = 0, steps = 0, worstInner = 0;
+  for (let step = 0; step < 12 * 40; step++) {
+    G.stepDynamics(stC, cfgC, 1 / 12, false, partC);
+    const r = G.computeDim(stC.stateR, cfgC.DIMENSIONS.reasoning.slope, stC.ceilingR);
+    const ratio = Math.min(1, r / Math.max(1e-9, stC.ceilingR));
+    const inner = E.groundingRate * ratio;
+    if (inner > worstInner) worstInner = inner;
+    if (inner > E.groundingRateMax) binds++;
+    steps++;
+    if (stC.yT4 !== null) break;
+  }
+  check('groundingRateMax cap never binds at shipped defaults',
+    binds === 0,
+    `cap engaged in ${binds}/${steps} steps; max inner = ${worstInner.toFixed(4)} ` +
+    `vs cap ${E.groundingRateMax} (groundingRate = ${E.groundingRate}). ` +
+    `If this now binds, the gapg_p2 wording is stale.`);
+
+  // DP saturates: a veto onset anywhere above ~0.6 fires in the same month, so
+  // institutionalVetoOnset cannot discriminate within that band. Recorded so a
+  // later reader does not read its flat sweep as "the veto does nothing".
+  const partD = Object.assign({}, partC);
+  const stD = G.createSimState(partD, cfgC);
+  let firstOver75 = -1, firstOver60 = -1, stepsInBand = 0;
+  for (let step = 0; step < 12 * 40; step++) {
+    G.stepDynamics(stD, cfgC, 1 / 12, false, partD);
+    const r = G.computeDim(stD.stateR, cfgC.DIMENSIONS.reasoning.slope, stD.ceilingR);
+    const a = G.computeDim(stD.stateA, cfgC.DIMENSIONS.agency.slope, stD.ceilingA);
+    const w = G.computeDim(stD.stateW, cfgC.DIMENSIONS.worldModeling.slope, stD.ceilingWM);
+    const dp = 1 / (1 + Math.exp(-(0.5 * Math.cbrt(r * w * a) + 0.3 * a - 5.0)));
+    if (dp > 0.75 && firstOver75 < 0) firstOver75 = step;
+    if (dp > 0.60 && firstOver60 < 0) firstOver60 = step;
+    if (dp > 0.60 && dp < 0.99) stepsInBand++;
+  }
+  check('DP occupies no time in the 0.6-0.99 band (veto onset is flat there)',
+    stepsInBand === 0,
+    `DP crosses 0.60 at step ${firstOver60} and 0.75 at step ${firstOver75}, ` +
+    `spending ${stepsInBand} steps in between`);
+}
+
 console.log('\n' + '='.repeat(60));
 console.log(fails === 0 ? 'ALL CHECKS PASSED' : `${fails} CHECK(S) FAILED`);
 process.exit(fails === 0 ? 0 : 1);
