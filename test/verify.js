@@ -302,6 +302,68 @@ try { const s = T2.getSummary(); check('getSummary', isFinite(s.agencyCeiling), 
     `spending ${stepsInBand} steps in between`);
 }
 
+// ---- Decomposition: RSI must not be counted twice -------------------------
+// The c7 stackgroup summed four channels. algoComp was
+// accumulatedRsi + dAlgo*dt, where dAlgo had already added dRSI, and rsiComp
+// was accumulatedRsi again -- so the recursive term sat in two bands at once.
+// algoComp is now the multiplier-driven algorithmic gain alone.
+//
+// Note what is deliberately NOT asserted here: that the four channels sum to
+// the total. They do not, and cannot without redesigning the decomposition.
+// totalLog is a log-FLOPs difference while accumulatedRsi/Algo/Paradigm are
+// algoK-scale rates, so the remainder term clamps at 0 and the stack overshoots
+// by ~3.8 against a total of ~2.6. That is a units problem in the model, not a
+// bookkeeping bug, and it is reported rather than papered over.
+(function(){
+  let d = null;
+  try {
+    // Same construction the page and the rest of this suite use. A fresh,
+    // unconditioned tracker produces NaN in three of the four channels from
+    // step 0 -- pre-existing -- and a test that only compares the channels to
+    // each other passes on that NaN without noticing.
+    G.setSeed(3);
+    const t = new G.ParticleFilterTracker(600);
+    for (const o of G.FALLBACK_BENCHMARK_HISTORY) t.observeRealData(o.year, o);
+    d = t.runDecomposition();
+  } catch (e) {
+    check('Decomposition channels are finite on a conditioned tracker', false, 'threw: ' + e.message);
+    return;
+  }
+  const series = ['hwComp', 'algoComp', 'paradigmComp', 'rsiComp', 'totalLogSeries'];
+  const missing = series.filter((k) => !d || !d[k]);
+  if (missing.length) {
+    check('Decomposition channels are finite on a conditioned tracker', false,
+          'missing series: ' + missing.join(', '));
+    return;
+  }
+  const nonFinite = {};
+  let n = 0;
+  for (const k of series) {
+    const bad = d[k].filter((v) => !isFinite(v)).length;
+    if (bad) { nonFinite[k] = bad; n += bad; }
+  }
+  check('Decomposition channels are finite on a conditioned tracker', n === 0,
+        n === 0
+          ? d.years.length + ' steps across ' + series.length + ' series, all finite'
+          : JSON.stringify(nonFinite));
+
+  // Under the old code algoComp >= rsiComp held at every step by construction,
+  // because rsiComp was one of its summands. With the channels separated the
+  // RSI band overtakes the algorithmic one at its peak, so this can only be
+  // observed if the de-duplication actually took effect.
+  let peakRsi = 0, algoAtPeak = 0, rsiAboveAlgo = 0;
+  for (let i = 0; i < d.years.length; i++) {
+    if (d.rsiComp[i] > peakRsi) { peakRsi = d.rsiComp[i]; algoAtPeak = d.algoComp[i]; }
+    if (d.rsiComp[i] > d.algoComp[i]) rsiAboveAlgo++;
+  }
+  check('RSI is not also counted inside the algorithmic channel',
+        peakRsi > 0 && rsiAboveAlgo > 0,
+        peakRsi === 0
+          ? 'RSI never activated, so this check has no teeth'
+          : 'peak RSI ' + peakRsi.toFixed(3) + ' vs algorithmic ' + algoAtPeak.toFixed(3) +
+            '; RSI exceeds algorithmic at ' + rsiAboveAlgo + '/' + d.years.length + ' steps');
+})();
+
 console.log('\n' + '='.repeat(60));
 console.log(fails === 0 ? 'ALL CHECKS PASSED' : `${fails} CHECK(S) FAILED`);
 process.exit(fails === 0 ? 0 : 1);

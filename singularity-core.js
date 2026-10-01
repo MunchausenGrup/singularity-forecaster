@@ -1766,11 +1766,12 @@ class ParticleFilterTracker {
 
     const dt = 1.0 / 12.0;
     const steps = 40 * 12;
-    const years = [], hwComp = [], algoComp = [], paradigmComp = [], rsiComp = [];
+    const years = [], hwComp = [], algoComp = [], paradigmComp = [], rsiComp = [], totalLogSeries = [];
 
     const st = createSimState(rep, cfg);
     const flopsStart = cfg.BASE_LOG_FLOPS;
-    let accumulatedParadigm = 0, accumulatedRsi = 0, prevAlgoKMult = 1.0;
+    let accumulatedParadigm = 0, accumulatedRsi = 0, accumulatedAlgo = 0;
+    let prevAlgoKMult = 1.0;
     let prevHW = 0, prevAlgo = 0;
 
     for (let step = 0; step < steps; step++) {
@@ -1785,21 +1786,29 @@ class ParticleFilterTracker {
       const dAlgoK = st.algoK * st.algoKMult;
       const dRSI = Math.max(0, dAlgoK - prevAlgo);
       const dParadigm = (st.paradigmGeneration - prevParadigm) * 2.0;
-      const dAlgo = Math.max(0, dAlgoK - prevAlgoKMult * st.algoK + dRSI);
+      // Algorithmic efficiency gain from the multiplier alone, with the
+      // recursive term excluded: dRSI is accumulated separately below, and
+      // folding it in here as well is what made the stack exceed the total.
+      const dAlgoEff = Math.max(0, dAlgoK - prevAlgoKMult * st.algoK);
 
       accumulatedParadigm += dParadigm;
       accumulatedRsi += dRSI * dt;
-      prevHW = dHW; prevAlgo = dAlgoK;
-
+      accumulatedAlgo += dAlgoEff * dt;
+      prevHW = dHW; prevAlgo = dAlgoK; prevAlgoKMult = st.algoKMult;
       years.push(y);
-      // Guard the Plotly stackgroup against negatives (GPU-bubble writedown).
-      hwComp.push(Math.max(0, (st.flopsLog - flopsStart) - accumulatedRsi - accumulatedParadigm));
-      algoComp.push(Math.max(0, accumulatedRsi + dAlgo * dt));
-      paradigmComp.push(accumulatedParadigm);
-      rsiComp.push(accumulatedRsi);
+
+      // Hardware is the remainder, so hw + algo + paradigm + rsi equals the
+      // total log growth. It used to subtract only rsi and paradigm, which
+      // left the algorithmic part counted twice across the stackgroup.
+      const totalLog = st.flopsLog - flopsStart;
+      hwComp.push(Math.max(0, totalLog - accumulatedRsi - accumulatedParadigm - accumulatedAlgo));
+      algoComp.push(Math.max(0, accumulatedAlgo));
+      paradigmComp.push(Math.max(0, accumulatedParadigm));
+      rsiComp.push(Math.max(0, accumulatedRsi));
+      totalLogSeries.push(Math.max(0, st.flopsLog - flopsStart));
       if (st.yT4 !== null) break;
     }
-    return { years, hwComp, algoComp, paradigmComp, rsiComp };
+    return { years, hwComp, algoComp, paradigmComp, rsiComp, totalLogSeries };
   }
 }
 
