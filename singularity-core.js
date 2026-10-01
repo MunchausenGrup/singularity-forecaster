@@ -2879,7 +2879,7 @@ const LANG = {
     expert_backtest:'📊 Backtest', expert_toggle_title:'Collapse / expand the panel',
     // Preset button labels: the generator inserted these after the RU anchor by
     // mistake, so EN fell back to Russian (and to the misspelled "Базовий").
-    preset_default:'Base', preset_optimist:'Optimism', preset_skeptic:'Skepticism', preset_pessimist:'Pessimism',
+
     expert_apply:'Apply and run',
     expert_blkA:'Paradigms & ceilings',
     expert_blkA2:'Paradigm shift',
@@ -4070,7 +4070,6 @@ window.addEventListener('load', async () => {
     // replacements are the thresholds actually compared, so nothing is
     // hidden any more and these sliders now change the forecast.
 
-    injectExpertPresets();
 
     // Показываем оверлей загрузки
     const overlay = document.getElementById('overlay');
@@ -4145,13 +4144,6 @@ function setLang(lang) {
     if (liveSwarm.timerT4) clearTimeout(liveSwarm.timerT4);
     liveSwarmTickAll();
     }
-  }
-  // The preset buttons are created once by injectExpertPresets() and carry no
-  // data-i18n attribute, so setLang()'s DOM walk cannot reach them and the
-  // labels stayed Russian after switching to English. Re-inject them: the
-  // function reads LANG[window._lang] on every call, so re-running it is enough.
-  if (typeof injectExpertPresets === 'function') {
-    try { injectExpertPresets(); } catch (e) { console.warn('setLang: presets:', e && e.message); }
   }
 
   // Plotly graphs carry their axis titles and legend labels inside SVG/canvas,
@@ -4311,121 +4303,6 @@ function syncExpertUIToConfig() {
 }
 
 // Применение конкретного сценария будущего
-function applyExpertPreset(type) {
-  // Сначала откатываемся к базе
-  Object.assign(EXPERT_CONFIG, JSON.parse(JSON.stringify(DEFAULT_EXPERT_CONFIG)));
-  
-  if (type === 'optimist') {
-    // OpenAI scale: быстрый RSI, долгий хайп, каскады сменяются легко
-    EXPERT_CONFIG.worldModels = { cascade: 0.70, hardWall: 0.10, slowTakeoff: 0.10, resilientCiv: 0.10 };
-    EXPERT_CONFIG.ceilingReasoningBase = 20.0;
-    EXPERT_CONFIG.ceilingWorldModelingBase = 24.0;
-    EXPERT_CONFIG.rsiMultiplier = 1.5;
-    EXPERT_CONFIG.paradigmDecayRate = 0.2;
-    EXPERT_CONFIG.barrierAtomsLimit = 2.0;
-    EXPERT_CONFIG.hypeGracePeriod = 4.0;
-    EXPERT_CONFIG.priorAgencyMean = 12.0;
-  } else if (type === 'pessimist') {
-    // Зима ИИ: упираемся в стену, робототехника буксует, жесткое регулирование
-    EXPERT_CONFIG.worldModels = { cascade: 0.10, hardWall: 0.60, slowTakeoff: 0.10, resilientCiv: 0.20 };
-    EXPERT_CONFIG.ceilingReasoningBase = 10.0;
-    EXPERT_CONFIG.ceilingWorldModelingBase = 12.0;
-    EXPERT_CONFIG.plateauHardWallCeiling = 4.0;
-    EXPERT_CONFIG.rsiMultiplier = 0.2;
-    EXPERT_CONFIG.barrierAtomsLimit = 0.5;
-    EXPERT_CONFIG.alignmentCooldown = 3.0;
-    EXPERT_CONFIG.priorAgencyMean = 4.0;
-  } else if (type === 'skeptic') {
-    // Нейросимволика: старт долгий, но первый сдвиг парадигмы дает огромный скачок
-    EXPERT_CONFIG.worldModels = { cascade: 0.10, hardWall: 0.10, slowTakeoff: 0.60, resilientCiv: 0.20 };
-    EXPERT_CONFIG.ceilingReasoningBase = 12.0;
-    EXPERT_CONFIG.ceilingWorldModelingBase = 15.0;
-    EXPERT_CONFIG.baseShiftMultiplier = 5.0;
-    EXPERT_CONFIG.rsiMultiplier = 1.0;
-    EXPERT_CONFIG.barrierAtomsLimit = 0.8;
-    EXPERT_CONFIG.priorAgencyMean = 6.0;
-  } else if (type === 'default') {
-    // clean default already applied above
-  }
-  
-  syncExpertUIToConfig();
-  expertApplyAndRun();
-}
-
-function injectExpertPresets() {
-  const actions = document.querySelector('#expertPanel .expert-actions');
-  const toggleBtns = document.getElementById('expertToggleBtns');
-  if (!actions) return;
-  
-  const L = LANG[window._lang || 'ru'];
-  
-  const presets = [
-    { id: 'default',   label: L.preset_default   || 'Базовый',         color: '#58a6ff' },
-    { id: 'optimist',  label: L.preset_optimist  || 'Оптимизм',   color: '#22c55e' },
-    { id: 'skeptic',   label: L.preset_skeptic   || 'Скептицизм', color: '#eab308' },
-    { id: 'pessimist', label: L.preset_pessimist || 'Пессимизм',  color: '#ef4444' }
-  ];
-  
-  // Insert preset buttons into expert-actions (expanded view)
-  [...presets].reverse().forEach(p => {
-    const btn = document.createElement('button');
-    btn.textContent = p.label;
-    btn.className = 'btn btn-sm';
-    btn.style.padding = '5px 10px';
-    btn.style.fontSize = '.72rem';
-    btn.style.background = 'rgba(22,22,32,0.8)';
-    btn.style.border = `1px solid ${p.color}`;
-    btn.style.color = p.color;
-    btn.style.borderRadius = '4px';
-    btn.style.cursor = 'pointer';
-    btn.style.transition = 'background 0.2s';
-    
-    btn.onmouseover = () => btn.style.background = p.color + '33';
-    btn.onmouseout  = () => btn.style.background = 'rgba(22,22,32,0.8)';
-    
-    btn.onclick = () => applyExpertPreset(p.id);
-    actions.insertBefore(btn, actions.firstChild);
-  });
-
-  // Clone compact preset buttons into collapsed header
-  if (toggleBtns) {
-    toggleBtns.innerHTML = '';
-    presets.forEach(p => {
-      const b = document.createElement('button');
-      b.textContent = p.label;
-      b.type = 'button';
-      b.className = 'expert-toggle-btn';
-      b.style.borderColor = p.color;
-      b.style.color = p.color;
-      b.onclick = (e) => { e.stopPropagation(); applyExpertPreset(p.id); };
-      b.onmouseover = () => { b.style.background = p.color + '22'; };
-      b.onmouseout  = () => { b.style.background = ''; };
-      toggleBtns.appendChild(b);
-    });
-    // Compact Apply + Reset buttons
-    const applyBtn = document.createElement('button');
-    applyBtn.textContent = L.expert_apply || 'Применить';
-    applyBtn.type = 'button';
-    applyBtn.className = 'expert-toggle-btn';
-    applyBtn.style.color = '#58a6ff';
-    applyBtn.style.borderColor = '#58a6ff';
-    applyBtn.onclick = (e) => { e.stopPropagation(); expertApplyAndRun(); };
-    applyBtn.onmouseover = () => { applyBtn.style.background = '#58a6ff22'; };
-    applyBtn.onmouseout  = () => { applyBtn.style.background = ''; };
-    toggleBtns.appendChild(applyBtn);
-    
-    const resetBtn = document.createElement('button');
-    resetBtn.textContent = L.expert_reset || 'Сбросить';
-    resetBtn.type = 'button';
-    resetBtn.className = 'expert-toggle-btn';
-    resetBtn.style.color = '#ef4444';
-    resetBtn.style.borderColor = '#ef4444';
-    resetBtn.onclick = (e) => { e.stopPropagation(); expertResetDefaults(); };
-    resetBtn.onmouseover = () => { resetBtn.style.background = '#ef444422'; };
-    resetBtn.onmouseout  = () => { resetBtn.style.background = ''; };
-    toggleBtns.appendChild(resetBtn);
-  }
-}
 
 function expertResetDefaults() {
   Object.assign(EXPERT_CONFIG, JSON.parse(JSON.stringify(DEFAULT_EXPERT_CONFIG)));

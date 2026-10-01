@@ -182,15 +182,6 @@ body{font-family:var(--font);background:var(--bg-primary);color:var(--text-prima
    to track a .open class that could disagree with the panel's own state. */
 .expert-arrow { font-size:1rem; transition:transform .2s; display:inline-block; }
 #expertPanel.collapsed .expert-arrow { transform:rotate(180deg); }
-/* Compact preset controls live in the header while collapsed. Hidden when
-   expanded, because the full-width rows inside the panel take over there. */
-.expert-toggle-btns { display:none; gap:6px; align-items:center; margin-left:auto; margin-right:12px; flex-wrap:wrap; }
-#expertPanel.collapsed .expert-toggle-btns { display:flex; }
-.expert-toggle-btn {
-  font-family:inherit; font-size:.7rem; font-weight:600; letter-spacing:.02em;
-  padding:3px 9px; border-radius:var(--radius-sm); border:1px solid var(--border);
-  background:transparent; cursor:pointer; white-space:nowrap;
-}
 .expert-toggle-label { margin-right:auto; }
 .expert-toggle {
   display:flex; align-items:center; justify-content:space-between;
@@ -253,9 +244,7 @@ body{font-family:var(--font);background:var(--bg-primary);color:var(--text-prima
      them all reachable; without this they run off the right edge. */
   .expert-toggle{flex-wrap:wrap;gap:8px;height:auto}
   .expert-toggle-label{margin-right:auto}
-  .expert-toggle-btns{margin-left:0;margin-right:0;width:100%;order:3}
   .expert-arrow{margin-left:auto}
-  .expert-toggle-btn{padding:8px 14px;font-size:.74rem;min-height:44px}
 
   /* Data table: 6 columns of numbers cannot fit a phone. Scroll it sideways
      inside its own container rather than letting the page scroll. */
@@ -338,7 +327,6 @@ body{font-family:var(--font);background:var(--bg-primary);color:var(--text-prima
 @media(pointer:coarse){
   .btn{min-height:44px}
   .lang-btn{min-height:40px}
-  .expert-toggle-btn{min-height:40px}
   .control-group input[type=range]{height:24px}
 }
 .expert-actions {
@@ -492,15 +480,16 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
 
 <!-- ===== EXPERT SANDBOX ===== -->
 <!-- Collapsed by default. The four headline medians are the product; a wall of
-     ~30 sliders above them buries the answer it is meant to inform. The
-     collapsed state keeps the presets and Apply/Reset reachable in the header
-     (see #expertToggleBtns) so folding does not cost the visitor a round trip.
+     ~50 sliders above them buries the answer it is meant to inform. The
+     preset buttons that used to sit in the header (#expertToggleBtns) have been
+     removed along with the presets themselves, so folding now costs a round
+     trip to Apply/Reset -- acceptable, since Reset restores the defaults that
+     the presets duplicated.
      Nothing is left reserving space: .expert-grid and .expert-actions both go
      display:none, and the panel's vertical padding is zeroed. -->
 <div class="expert-panel collapsed" id="expertPanel">
   <button class="expert-toggle" onclick="toggleExpertPanel()" data-i18n="[title]expert_toggle_title" title="Свернуть/развернуть панель">
     <span class="expert-toggle-label" data-i18n="expert_toggle_label">Expert Sandbox</span>
-    <span class="expert-toggle-btns" id="expertToggleBtns"></span>
     <span class="expert-arrow" id="expertArrow">▾</span>
   </button>
   <div class="expert-grid">
