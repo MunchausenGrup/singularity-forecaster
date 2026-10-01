@@ -1020,6 +1020,174 @@ footer{text-align:center;padding:20px;font-size:.64rem;color:var(--text-muted);b
         <div class="expert-param-desc" data-i18n="expert_d_observationSigmaMode">Режим вычисления σ в likelihood</div>
       </div>
 
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkG">Институциональное вето</div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_institutionalVetoThreshold">Порог силы сопротивления</span>
+          <span class="expert-param-value" id="ev-institutionalVetoThreshold">0.52</span>
+        </div>
+        <input type="range" id="e-institutionalVetoThreshold" min="0.0" max="1.0" step="0.01" value="0.52" oninput="expertUpdate('institutionalVetoThreshold',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_institutionalVetoThreshold">Доля населения, при которой сопротивление удерживает IC ниже порога T3. Выше — захват становится невозможным</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_institutionalVetoStrength">Априор силы сопротивления</span>
+          <span class="expert-param-value" id="ev-institutionalVetoStrength">0.50</span>
+        </div>
+        <input type="range" id="e-institutionalVetoStrength" min="0.0" max="1.0" step="0.01" value="0.50" oninput="expertUpdate('institutionalVetoStrength',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_institutionalVetoStrength">Центр распределения сопротивления между частицами; разброс задаётся эффективностью RSI. 0.5 = текущий уровень</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_institutionalVetoOnset">Момент включения (DP)</span>
+          <span class="expert-param-value" id="ev-institutionalVetoOnset">0.75</span>
+        </div>
+        <input type="range" id="e-institutionalVetoOnset" min="0.0" max="1.0" step="0.01" value="0.75" oninput="expertUpdate('institutionalVetoOnset',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_institutionalVetoOnset">Значение давления делегирования, после которого сопротивление начинает мобилизацию. Тот же порог, что у T2</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_institutionalVetoRamp">Скорость мобилизации</span>
+          <span class="expert-param-value" id="ev-institutionalVetoRamp">1.00</span>
+        </div>
+        <input type="range" id="e-institutionalVetoRamp" min="0.0" max="3.0" step="0.05" value="1.00" oninput="expertUpdate('institutionalVetoRamp',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_institutionalVetoRamp">/год: как быстро сопротивление набирает силу после включения</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_institutionalVetoDecay">Усталость сопротивления</span>
+          <span class="expert-param-value" id="ev-institutionalVetoDecay">0.05</span>
+        </div>
+        <input type="range" id="e-institutionalVetoDecay" min="0.0" max="1.0" step="0.01" value="0.05" oninput="expertUpdate('institutionalVetoDecay',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_institutionalVetoDecay">/год: спад без подкрепления. Высокое значение означает быстро выгорающее сопротивление</div>
+      </div>
+
+    </div>
+
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkH">Человеческая агентность</div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_humanAgencyInitial">Начальная доля решений за людьми</span>
+          <span class="expert-param-value" id="ev-humanAgencyInitial">0.85</span>
+        </div>
+        <input type="range" id="e-humanAgencyInitial" min="0.0" max="1.0" step="0.01" value="0.85" oninput="expertUpdate('humanAgencyInitial',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_humanAgencyInitial">Стартовая величина: какая доля значимых решений в 2026 году остаётся человеческой</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_humanAgencyCaptureGate">Порог захвата институтов</span>
+          <span class="expert-param-value" id="ev-humanAgencyCaptureGate">0.55</span>
+        </div>
+        <input type="range" id="e-humanAgencyCaptureGate" min="0.0" max="1.0" step="0.01" value="0.55" oninput="expertUpdate('humanAgencyCaptureGate',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_humanAgencyCaptureGate">Ниже этой доли рост IC прекращается: институты не могут быть захвачены, пока люди решают</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_humanAgencyDecay">Естественная утрата позиций</span>
+          <span class="expert-param-value" id="ev-humanAgencyDecay">0.16</span>
+        </div>
+        <input type="range" id="e-humanAgencyDecay" min="0.0" max="0.5" step="0.01" value="0.16" oninput="expertUpdate('humanAgencyDecay',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_humanAgencyDecay">/год: базовая скорость, с которой агентность убывает без внешнего давления</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_humanAgencyDelegationGain">Выгода делегирования</span>
+          <span class="expert-param-value" id="ev-humanAgencyDelegationGain">0.035</span>
+        </div>
+        <input type="range" id="e-humanAgencyDelegationGain" min="0.0" max="0.20" step="0.005" value="0.035" oninput="expertUpdate('humanAgencyDelegationGain',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_humanAgencyDelegationGain">/год: ускорение убыли, когда система становится выгодной (растёт с A)</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_humanAgencyVetoBonus">Торможение убыли сопротивлением</span>
+          <span class="expert-param-value" id="ev-humanAgencyVetoBonus">0.55</span>
+        </div>
+        <input type="range" id="e-humanAgencyVetoBonus" min="0.0" max="0.85" step="0.01" value="0.55" oninput="expertUpdate('humanAgencyVetoBonus',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_humanAgencyVetoBonus">Насколько институциональное сопротивление замедляет утрату позиций. 0 — сопротивление бесполезно</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_humanAgencyInterventionBonus">Восстановление вмешательством государства</span>
+          <span class="expert-param-value" id="ev-humanAgencyInterventionBonus">0.40</span>
+        </div>
+        <input type="range" id="e-humanAgencyInterventionBonus" min="0.0" max="1.0" step="0.01" value="0.40" oninput="expertUpdate('humanAgencyInterventionBonus',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_humanAgencyInterventionBonus">Доля потери, восстанавливаемая государственным вмешательством. Пропорционально остатку, поэтому не может создать полномочия из ничего</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_humanAgencyRecover">Восстановление после инцидента</span>
+          <span class="expert-param-value" id="ev-humanAgencyRecover">0.35</span>
+        </div>
+        <input type="range" id="e-humanAgencyRecover" min="0.0" max="1.0" step="0.01" value="0.35" oninput="expertUpdate('humanAgencyRecover',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_humanAgencyRecover">Доля потери, восстанавливаемая инцидентом выравнивания</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_humanAgencyFloor">Пол остатка полномочий</span>
+          <span class="expert-param-value" id="ev-humanAgencyFloor">0.05</span>
+        </div>
+        <input type="range" id="e-humanAgencyFloor" min="0.0" max="0.30" step="0.01" value="0.05" oninput="expertUpdate('humanAgencyFloor',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_humanAgencyFloor">Нижняя граница: полное отчуждение необратимо, но не мгновенно</div>
+      </div>
+
+    </div>
+
+    <div class="expert-group">
+      <div class="expert-group-title" data-i18n="expert_blkI">Заземление reasoning</div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_groundingRate">Доля reasoning, уходящая в заземление</span>
+          <span class="expert-param-value" id="ev-groundingRate">0.22</span>
+        </div>
+        <input type="range" id="e-groundingRate" min="0.0" max="1.0" step="0.01" value="0.22" oninput="expertUpdate('groundingRate',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_groundingRate">Скорость, с которой новые рассуждения превращаются в пригодную модель мира. Главный параметр зазора R ≫ W</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_groundingRateMax">Предел поглощения</span>
+          <span class="expert-param-value" id="ev-groundingRateMax">0.90</span>
+        </div>
+        <input type="range" id="e-groundingRateMax" min="0.0" max="2.0" step="0.01" value="0.90" oninput="expertUpdate('groundingRateMax',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_groundingRateMax">Максимум заземления за единицу роста reasoning: выше этого reasoning может обгонять заземление, и разрыв остаётся открытым</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_groundingEfficiency">КПД заземления</span>
+          <span class="expert-param-value" id="ev-groundingEfficiency">0.35</span>
+        </div>
+        <input type="range" id="e-groundingEfficiency" min="0.0" max="1.0" step="0.01" value="0.35" oninput="expertUpdate('groundingEfficiency',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_groundingEfficiency">Доля заземления, доходящая до материи. Датчики и энергия ограничены независимо от качества рассуждений</div>
+      </div>
+
+      <div class="expert-param">
+        <div class="expert-param-label">
+          <span class="expert-param-name" data-i18n="expert_p_groundingLabourCost">Цена заземления</span>
+          <span class="expert-param-value" id="ev-groundingLabourCost">0.45</span>
+        </div>
+        <input type="range" id="e-groundingLabourCost" min="0.0" max="1.0" step="0.01" value="0.45" oninput="expertUpdate('groundingLabourCost',this.value)">
+        <div class="expert-param-desc" data-i18n="expert_d_groundingLabourCost">Доля выигрыша в агенции, съедаемая заземлением. Ноль превращает заземление в субсидию, при которой T3 наступает быстрее</div>
+      </div>
+
+    </div>
+
   </div><!-- /expert-grid -->
   <div class="expert-actions">
     <button class="btn btn-secondary btn-sm" onclick="expertResetDefaults()" data-i18n="expert_reset">Сбросить по умолчанию</button>

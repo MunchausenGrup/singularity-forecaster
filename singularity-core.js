@@ -777,7 +777,7 @@ function stepDynamics(st, cfg, dt, stochastic, particle) {
   // was distorted rather than merely constrained. A veto that binds for the
   // entire population is not a veto, it is a hard wall wearing a veto's name.
   const vetoRaw = (particle && particle.veto_strength !== undefined)
-    ? particle.veto_strength : 0.5;
+    ? particle.veto_strength : E.institutionalVetoStrength;
   if (DP > E.institutionalVetoOnset) {
     // Relax toward this particle's own resistance level, not toward 1.0.
     // Using (1 - vetoActive) as the driver made every particle converge to the
@@ -1232,7 +1232,17 @@ class ParticleFilterTracker {
         // a particle-population reshuffle masquerading as a feature effect, and
         // one that made the test suite's agencyCeiling read 12.54 instead of
         // 15.45.
-        veto_strength: Math.max(0.0, Math.min(1.0, 0.5 + (rsiDraw - 1.0) * 1.2)),
+        // institutionalVetoStrength is the CENTRE of the resistance prior, not a
+      // constant: the per-particle draw is centred on it and spread by the RSI
+      // efficiency draw. It used to read a literal 0.5 here, which left the
+      // config key dead -- a slider for it would have moved nothing.
+      veto_strength: Math.max(0.0, Math.min(1.0,
+      // Read the prior centre from THIS tracker's config, not the global
+      // EXPERT_CONFIG. The dynamics read cfg.EXPERT (a deep copy taken in the
+      // constructor), so drawing from the global meant a caller that had
+      // adjusted tracker.cfg saw no change in resistance -- the slider moved
+      // nothing. Both now read one source.
+      this.cfg.EXPERT.institutionalVetoStrength + (rsiDraw - 1.0) * 1.2)),
       });
     }
   }
@@ -1372,7 +1382,7 @@ class ParticleFilterTracker {
           // the first resampling step and making the effect vanish in every
           // Monte Carlo run.
           veto_strength: Math.max(0.0, Math.min(1.0,
-            (p.veto_strength !== undefined ? p.veto_strength : 0.5) + randnRange(0, 0.05))),
+            (p.veto_strength !== undefined ? p.veto_strength : this.cfg.EXPERT.institutionalVetoStrength) + randnRange(0, 0.05))),
           
           // PATCH 7: Prevent early loss of world model diversity via 3% rejuvenation (mutation)
           world_model: (() => {
@@ -2552,6 +2562,43 @@ const LANG = {
     expert_blkD5:'Симуляция',
     expert_blkE:'Барьеры реальности',
     expert_blkF:'Воплощённость',
+    expert_blkG:'Институциональное вето',
+    expert_p_institutionalVetoThreshold:'Порог силы сопротивления',
+    expert_d_institutionalVetoThreshold:'Доля населения, при которой сопротивление удерживает IC ниже порога T3. Выше — захват становится невозможным',
+    expert_p_institutionalVetoStrength:'Априор силы сопротивления',
+    expert_d_institutionalVetoStrength:'Центр распределения сопротивления между частицами; разброс задаётся эффективностью RSI. 0.5 = текущий уровень',
+    expert_p_institutionalVetoOnset:'Момент включения (DP)',
+    expert_d_institutionalVetoOnset:'Значение давления делегирования, после которого сопротивление начинает мобилизацию. Тот же порог, что у T2',
+    expert_p_institutionalVetoRamp:'Скорость мобилизации',
+    expert_d_institutionalVetoRamp:'/год: как быстро сопротивление набирает силу после включения',
+    expert_p_institutionalVetoDecay:'Усталость сопротивления',
+    expert_d_institutionalVetoDecay:'/год: спад без подкрепления. Высокое значение означает быстро выгорающее сопротивление',
+    expert_blkH:'Человеческая агентность',
+    expert_p_humanAgencyInitial:'Начальная доля решений за людьми',
+    expert_d_humanAgencyInitial:'Стартовая величина: какая доля значимых решений в 2026 году остаётся человеческой',
+    expert_p_humanAgencyCaptureGate:'Порог захвата институтов',
+    expert_d_humanAgencyCaptureGate:'Ниже этой доли рост IC прекращается: институты не могут быть захвачены, пока люди решают',
+    expert_p_humanAgencyDecay:'Естественная утрата позиций',
+    expert_d_humanAgencyDecay:'/год: базовая скорость, с которой агентность убывает без внешнего давления',
+    expert_p_humanAgencyDelegationGain:'Выгода делегирования',
+    expert_d_humanAgencyDelegationGain:'/год: ускорение убыли, когда система становится выгодной (растёт с A)',
+    expert_p_humanAgencyVetoBonus:'Торможение убыли сопротивлением',
+    expert_d_humanAgencyVetoBonus:'Насколько институциональное сопротивление замедляет утрату позиций. 0 — сопротивление бесполезно',
+    expert_p_humanAgencyInterventionBonus:'Восстановление вмешательством государства',
+    expert_d_humanAgencyInterventionBonus:'Доля потери, восстанавливаемая государственным вмешательством. Пропорционально остатку, поэтому не может создать полномочия из ничего',
+    expert_p_humanAgencyRecover:'Восстановление после инцидента',
+    expert_d_humanAgencyRecover:'Доля потери, восстанавливаемая инцидентом выравнивания',
+    expert_p_humanAgencyFloor:'Пол остатка полномочий',
+    expert_d_humanAgencyFloor:'Нижняя граница: полное отчуждение необратимо, но не мгновенно',
+    expert_blkI:'Заземление reasoning',
+    expert_p_groundingRate:'Доля reasoning, уходящая в заземление',
+    expert_d_groundingRate:'Скорость, с которой новые рассуждения превращаются в пригодную модель мира. Главный параметр зазора R ≫ W',
+    expert_p_groundingRateMax:'Предел поглощения',
+    expert_d_groundingRateMax:'Максимум заземления за единицу роста reasoning: выше этого reasoning может обгонять заземление, и разрыв остаётся открытым',
+    expert_p_groundingEfficiency:'КПД заземления',
+    expert_d_groundingEfficiency:'Доля заземления, доходящая до материи. Датчики и энергия ограничены независимо от качества рассуждений',
+    expert_p_groundingLabourCost:'Цена заземления',
+    expert_d_groundingLabourCost:'Доля выигрыша в агенции, съедаемая заземлением. Ноль превращает заземление в субсидию, при которой T3 наступает быстрее',
     expert_d_agencyScalingSlope:'Наклон кривой масштабирования FLOPs → Agency',
     expert_d_alignmentCooldown:'Заморозка регуляторами после инцидента',
     expert_d_arc_agi:'Текущий уровень ARC-AGI для наблюдений',
@@ -2893,6 +2940,43 @@ const LANG = {
     expert_blkD5:'Simulation',
     expert_blkE:'Barriers of reality',
     expert_blkF:'Embodiment',
+    expert_blkG:'Institutional veto',
+    expert_p_institutionalVetoThreshold:'Resistance strength threshold',
+    expert_d_institutionalVetoThreshold:'Share of the population at which resistance holds IC below the T3 threshold. Above it, capture becomes impossible',
+    expert_p_institutionalVetoStrength:'Resistance prior',
+    expert_d_institutionalVetoStrength:'Centre of the resistance distribution across particles; the spread comes from RSI efficiency. 0.5 is the current level',
+    expert_p_institutionalVetoOnset:'Onset (DP)',
+    expert_d_institutionalVetoOnset:'Delegation pressure at which resistance begins to mobilise. The same threshold T2 uses',
+    expert_p_institutionalVetoRamp:'Mobilisation rate',
+    expert_d_institutionalVetoRamp:'per year: how fast resistance builds once it is engaged',
+    expert_p_institutionalVetoDecay:'Resistance fatigue',
+    expert_d_institutionalVetoDecay:'per year: decay without reinforcement. A high value means resistance burns out quickly',
+    expert_blkH:'Human agency',
+    expert_p_humanAgencyInitial:'Initial share of human decisions',
+    expert_d_humanAgencyInitial:'Starting value: what share of significant decisions in 2026 is still made by people',
+    expert_p_humanAgencyCaptureGate:'Institutional capture gate',
+    expert_d_humanAgencyCaptureGate:'Below this share, IC stops growing: institutions cannot be captured while people still decide',
+    expert_p_humanAgencyDecay:'Natural loss of position',
+    expert_d_humanAgencyDecay:'per year: baseline rate at which agency erodes without external pressure',
+    expert_p_humanAgencyDelegationGain:'Gain from delegation',
+    expert_d_humanAgencyDelegationGain:'per year: acceleration of erosion once the system is worth using (grows with A)',
+    expert_p_humanAgencyVetoBonus:'Resistance damping of erosion',
+    expert_d_humanAgencyVetoBonus:'How much institutional resistance slows the loss. 0 makes resistance useless',
+    expert_p_humanAgencyInterventionBonus:'Recovery by state intervention',
+    expert_d_humanAgencyInterventionBonus:'Share of the loss recovered by government action. Proportional to what remains, so it cannot manufacture authority from nothing',
+    expert_p_humanAgencyRecover:'Recovery after an incident',
+    expert_d_humanAgencyRecover:'Share of the loss recovered by an alignment incident',
+    expert_p_humanAgencyFloor:'Floor on remaining authority',
+    expert_d_humanAgencyFloor:'Lower bound: total disengagement is irreversible, but not instantaneous',
+    expert_blkI:'Grounding reasoning',
+    expert_p_groundingRate:'Share of reasoning that gets anchored',
+    expert_d_groundingRate:'How fast new reasoning is turned into a usable world model. The main parameter of the R ≫ W gap',
+    expert_p_groundingRateMax:'Absorption limit',
+    expert_d_groundingRateMax:'Maximum grounding per unit of reasoning growth: above it reasoning can outrun grounding and the gap stays open',
+    expert_p_groundingEfficiency:'Grounding efficiency',
+    expert_d_groundingEfficiency:'Share of grounding that reaches matter. Sensors and energy are rate-limited regardless of how good the reasoning is',
+    expert_p_groundingLabourCost:'Cost of grounding',
+    expert_d_groundingLabourCost:'Share of the agency gain consumed by grounding. Zero turns grounding into a subsidy, under which T3 arrives sooner',
     expert_d_agencyScalingSlope:'Slope of the FLOPs → Agency scaling curve',
     expert_d_alignmentCooldown:'Regulatory freeze after an incident',
     expert_d_arc_agi:'Current ARC-AGI level used for observations',
