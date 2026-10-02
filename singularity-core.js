@@ -2112,6 +2112,23 @@ function resetTracker() {
   if (parEl) parEl.textContent = '';
 }
 
+// Explicit, user-triggered scenario marginalisation. Costs ~7 s, so it must
+// never sit in the slider path; the panel shows the cheap split until this runs.
+function computeScenarioMarginal(tracker) {
+  const btn = document.getElementById('btnScenarioMarg');
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  // Yield once so the disabled state paints before the synchronous pass blocks.
+  setTimeout(() => {
+    try {
+      window._scenarioMarg = tracker.marginalScenarioShares();
+    } catch (e) {
+      console.error('scenario marginalisation failed:', e);
+      window._scenarioMarg = null;
+    }
+    updateTrackerUI(tracker);
+  }, 30);
+}
+
 function updateTrackerUI(tracker) {
   checkObservationWarning(tracker);
   updateObsMetrics();
@@ -2121,12 +2138,14 @@ function updateTrackerUI(tracker) {
   const parEl = document.getElementById('v3Params');
   if (parEl) {
     const L = LANG[window._lang || 'ru'];
-    const _marg = (typeof tracker.marginalScenarioShares === 'function')
-      ? tracker.marginalScenarioShares() : null;
-    const ms = _marg && _marg.shares ? _marg.shares
+    // Scenario shares are NOT recomputed on every slider move: the
+    // marginalisation costs ~7 s, and updateTrackerUI fires on each change.
+    // Until the button is pressed we show the cheap hard-label split and mark
+    // it as provisional, so a stale number is never presented as a measurement.
+    const ms = window._scenarioMarg ? window._scenarioMarg.shares
       : { cascade: sum.postCascade, hard_wall: sum.postHardWall,
           slow_takeoff: sum.postSlowTakeoff, resilient_civ: sum.postResilientCiv };
-    const msEff = _marg ? _marg.effSupport : 1.0;
+    const msEff = window._scenarioMarg ? window._scenarioMarg.effSupport : null;
     parEl.innerHTML = `
       <div style="font-size:0.75rem;color:var(--text-muted);margin-top:8px;border-top:1px dashed #1e1e2e;padding-top:8px;line-height:1.4">
         <b style="color:#f0883e">${L.wm_posterior_title || 'Текущие апостериорные веса гипотез'}:</b><br>
@@ -2135,10 +2154,17 @@ function updateTrackerUI(tracker) {
         Slow Takeoff (Взлет): <span style="color:#22c55e;font-family:monospace">${(ms.slow_takeoff * 100).toFixed(1)}%</span><br>
         Resilient (Иммунитет): <span style="color:#a855f7;font-family:monospace">${(ms.resilient_civ * 100).toFixed(1)}%</span><br>
         <div style="margin-top:8px;padding:6px 8px;border-left:2px solid #d29922;background:rgba(210,153,34,0.08);color:#d29922;font-size:11px">
-          ${(L.postMarginalised || 'Each particle is scored under all four scenarios and its weight split by the fit; {n} of 4 scenarios remain open.').replace('{n}', msEff.toFixed(2))}
+          ${msEff === null
+            ? (L.postProvisional || 'Provisional: read off the per-particle scenario label, not a fit. Press to compute the fit-weighted split (~7 s).')
+            : (L.postMarginalised || 'Each particle is scored under all four scenarios and its weight split by the fit; {n} of 4 scenarios remain open.').replace('{n}', msEff.toFixed(2))}
         </div>
+        <button id="btnScenarioMarg" type="button" style="margin-top:8px;font-size:11px;padding:4px 8px;cursor:pointer;background:#1f2233;color:#f0883e;border:1px solid #f0883e;border-radius:4px">
+          ${(msEff === null ? (L.btnScenarioCompute || 'Compute fit-weighted split') : (L.btnScenarioRecompute || 'Recompute'))}
+        </button>
       </div>
     `;
+    const btn = document.getElementById('btnScenarioMarg');
+    if (btn) btn.onclick = () => computeScenarioMarginal(tracker);
   }
 
   renderPriorSensitivity(tracker);
@@ -3030,6 +3056,9 @@ const LANG = {
     forecast_pagi:'P(T2)',
     postUnidentified:'Эти четыре числа — один случайный розыгрыш, а не измерение: апостериор по сценариям не идентифицирован, и на независимых облаках частиц каждый сценарий гуляет примерно от 1% до 97%. Считайте их неопределёнными.',
     postMarginalised:'Каждая частица оценена по всем четырём сценариям, и её вес поделён по качеству согласия с данными. Открытыми остаются {n} сценария из 4: данные различают их не полностью.',
+    postProvisional:'Предварительно: доля взята из метки сценария частицы, а не из подгонки под данные. Нажмите, чтобы посчитать долю, взвешенную по качеству согласия (около 7 с).',
+    btnScenarioCompute:'Посчитать по данным',
+    btnScenarioRecompute:'Пересчитать',
     t2past:'    уже в прошлом', t2reach:'достигнут в окне', t2degen:'отсечка за горизонтом — процент не различает частицы',
     forecast_median:'Медиана T2',
     forecast_overlay_hypotheses:'Гипотезы:',
@@ -3405,6 +3434,9 @@ const LANG = {
     forecast_pagi:'P(T2)',
     postUnidentified:'These four figures are one random draw, not a measurement: the world-model posterior is unidentified, and across independent particle clouds each scenario swings roughly between 1% and 97%. Treat them as undetermined.',
     postMarginalised:'Each particle is scored under all four scenarios and its weight split by the fit. {n} of 4 scenarios remain open: the data does not fully tell them apart.',
+    postProvisional:'Provisional: read off the per-particle scenario label, not a fit. Press to compute the fit-weighted split (~7 s).',
+    btnScenarioCompute:'Compute fit-weighted split',
+    btnScenarioRecompute:'Recompute',
     t2past:'    already past', t2reach:'reached in window', t2degen:'cutoff past horizon - the percentage does not separate particles',
     forecast_median:'Median T2',
     forecast_overlay_hypotheses:'Hypotheses:',
