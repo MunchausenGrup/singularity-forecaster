@@ -409,10 +409,19 @@ try { const s = T2.getSummary(); check('getSummary', isFinite(s.agencyCeiling), 
            : detail.join('; '));
 
   // The warning must actually reach the rendered report, not just sit in the pack.
+  // Anchored on the marginalised share it now reads (ms.cascade), not the old
+  // hard-label field, so this check fails if the panel silently reverts.
   const src = require('fs').readFileSync('D:/prod/singularity-forecaster/singularity-core.js', 'utf8');
-  const rendered = /postUnidentified/.test(src.slice(src.indexOf('postCascade \* 100') - 400, src.indexOf('postCascade \* 100') + 1600));
-  check('The diagnostic block renders the warning next to the four percentages', rendered,
-        rendered ? 'found in the report template' : 'the pack key exists but is not rendered');
+  const anchor = src.indexOf('ms.cascade * 100');
+  const rendered = anchor > -1 && /postMarginalised/.test(src.slice(anchor - 400, anchor + 1600));
+  check('The panel renders the marginalised shares with the degree-of-certainty note', rendered,
+        rendered ? 'found next to ms.cascade in the report template'
+                  : 'ms.cascade anchor or postMarginalised render is missing');
+
+  const margPack = Object.keys(L).every((l) => typeof L[l].postMarginalised === 'string'
+                                     && L[l].postMarginalised.indexOf('{n}') > -1);
+  check('The marginalisation note carries the {n} placeholder in every pack', margPack,
+        margPack ? Object.keys(L).map((l) => l + ' ok').join(', ') : 'a pack is missing the key or the placeholder');
 })();
 
 console.log('\n' + '='.repeat(60));

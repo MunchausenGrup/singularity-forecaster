@@ -264,6 +264,7 @@ const EXPERT_CONFIG = {
   // Share of particles whose DISCRETE world_model is re-drawn from the prior on each resampling step.
   // PATCH 7 set this at a hardcoded 0.03. Because the re-draw ignores the likelihood entirely, it injects prior mass in proportion to how often resampling fires, and with 17 sequential observations that was enough to drag the posterior back toward the prior and leave the world-model shares swinging across ~97 points between particle clouds.
   worldModelRejuvenation: 0.03,
+  marginalMaxParticles: 150,   // scenario marginalisation is ~4x a full filter pass
   scenarioMarginalCache: null,   // lazy: filled on first read, see marginalScenarioShares()
   observationSigmaMode: 'global',  // 'global' = BENCHMARK_SIGMAS; 'perPoint' = локальные *_sigma из точек данных
   // --- PLATEAU SCENARIO (затяжной T1 без прогресса) ---
@@ -550,6 +551,7 @@ function getNumericObservables(r10, a10, e10, expertCfg) {
 // 5. MATH & PHYSICS ENGINE (Particle Filter)
 // ============================================================================
 
+const MARGINAL_MAX_PARTICLES = 150;   // cost cap for marginalScenarioShares()
 const DEFAULT_PARTICLES = 1000;
 
 // Forecast origin — PINNED, deliberately not read from the wall clock.
@@ -1461,8 +1463,9 @@ class ParticleFilterTracker {
   // Lazy on purpose. This costs four likelihood evaluations per particle, so it
   // is computed on first read and cached; the cached object is invalidated
   // whenever the weights or the particles change.
-  marginalScenarioShares(sigmas = BENCHMARK_SIGMAS) {
-    if (this._margCache && this._margCacheStamp === this._weightStamp()) {
+  marginalScenarioShares(sigmas = BENCHMARK_SIGMAS, maxParticles = MARGINAL_MAX_PARTICLES) {
+    const stamp = this._weightStamp() + ':' + maxParticles;
+    if (this._margCache && this._margCacheStamp === stamp) {
       return this._margCache;
     }
 
@@ -1471,7 +1474,7 @@ class ParticleFilterTracker {
     if (obs.length === 0) {
       const empty = { shares: {}, effSupport: 0, marginalised: true, note: 'no-observations' };
       this._margCache = empty;
-      this._margCacheStamp = this._weightStamp();
+      this._margCacheStamp = stamp;
       return empty;
     }
 
@@ -1484,8 +1487,14 @@ class ParticleFilterTracker {
     let totalW = 0;
     for (let i = 0; i < this.n; i++) totalW += this.weights[i];
 
+    // Each particle costs four full trajectory re-simulations, so the pass is
+    // capped and the particles are taken on a fixed stride rather than the first
+    // N (which would be a contiguous block and could correlate with scenario).
+    const stride = this.n > maxParticles ? this.n / maxParticles : 1;
+    const used = Math.min(this.n, maxParticles);
     let effSupport = 0;
-    for (let i = 0; i < this.n; i++) {
+    for (let k = 0; k < used; k++) {
+      const i = Math.min(this.n - 1, Math.floor(k * stride));
       const p = this.particles[i];
       const w = totalW > 0 ? this.weights[i] / totalW : 1.0 / this.n;
 
@@ -1522,7 +1531,7 @@ class ParticleFilterTracker {
       }
       effSupport += s2 > 0 ? 1.0 / s2 : 1.0;
     }
-    effSupport /= this.n;
+    effSupport /= used;
 
     for (const k of MODELS) shares[k] = shares[k] || 0;
     const tot = MODELS.reduce((a, k) => a + shares[k], 0);
@@ -1531,11 +1540,13 @@ class ParticleFilterTracker {
     const out = {
       shares,
       effSupport,
+      particlesUsed: used,
+      particlesTotal: this.n,
       marginalised: true,
       note: 'world model marginalised over 4 scenarios; the per-particle draw no longer drives these numbers',
     };
     this._margCache = out;
-    this._margCacheStamp = this._weightStamp();
+    this._margCacheStamp = stamp;
     return out;
   }
 
@@ -2110,15 +2121,21 @@ function updateTrackerUI(tracker) {
   const parEl = document.getElementById('v3Params');
   if (parEl) {
     const L = LANG[window._lang || 'ru'];
+    const _marg = (typeof tracker.marginalScenarioShares === 'function')
+      ? tracker.marginalScenarioShares() : null;
+    const ms = _marg && _marg.shares ? _marg.shares
+      : { cascade: sum.postCascade, hard_wall: sum.postHardWall,
+          slow_takeoff: sum.postSlowTakeoff, resilient_civ: sum.postResilientCiv };
+    const msEff = _marg ? _marg.effSupport : 1.0;
     parEl.innerHTML = `
       <div style="font-size:0.75rem;color:var(--text-muted);margin-top:8px;border-top:1px dashed #1e1e2e;padding-top:8px;line-height:1.4">
         <b style="color:#f0883e">${L.wm_posterior_title || 'Текущие апостериорные веса гипотез'}:</b><br>
-        Cascade (Каскад): <span style="color:#58a6ff;font-family:monospace">${(sum.postCascade * 100).toFixed(1)}%</span><br>
-        Hard Wall (Стена): <span style="color:#ef4444;font-family:monospace">${(sum.postHardWall * 100).toFixed(1)}%</span><br>
-        Slow Takeoff (Взлет): <span style="color:#22c55e;font-family:monospace">${(sum.postSlowTakeoff * 100).toFixed(1)}%</span><br>
-        Resilient (Иммунитет): <span style="color:#a855f7;font-family:monospace">${(sum.postResilientCiv * 100).toFixed(1)}%</span>
+        Cascade (Каскад): <span style="color:#58a6ff;font-family:monospace">${(ms.cascade * 100).toFixed(1)}%</span><br>
+        Hard Wall (Стена): <span style="color:#ef4444;font-family:monospace">${(ms.hard_wall * 100).toFixed(1)}%</span><br>
+        Slow Takeoff (Взлет): <span style="color:#22c55e;font-family:monospace">${(ms.slow_takeoff * 100).toFixed(1)}%</span><br>
+        Resilient (Иммунитет): <span style="color:#a855f7;font-family:monospace">${(ms.resilient_civ * 100).toFixed(1)}%</span><br>
         <div style="margin-top:8px;padding:6px 8px;border-left:2px solid #d29922;background:rgba(210,153,34,0.08);color:#d29922;font-size:11px">
-          ${L.postUnidentified || 'These four are one random draw, not a measurement.'}
+          ${(L.postMarginalised || 'Each particle is scored under all four scenarios and its weight split by the fit; {n} of 4 scenarios remain open.').replace('{n}', msEff.toFixed(2))}
         </div>
       </div>
     `;
@@ -3012,6 +3029,7 @@ const LANG = {
     forecast_yaxis:'Удвоение HW (мес)',
     forecast_pagi:'P(T2)',
     postUnidentified:'Эти четыре числа — один случайный розыгрыш, а не измерение: апостериор по сценариям не идентифицирован, и на независимых облаках частиц каждый сценарий гуляет примерно от 1% до 97%. Считайте их неопределёнными.',
+    postMarginalised:'Каждая частица оценена по всем четырём сценариям, и её вес поделён по качеству согласия с данными. Открытыми остаются {n} сценария из 4: данные различают их не полностью.',
     t2past:'    уже в прошлом', t2reach:'достигнут в окне', t2degen:'отсечка за горизонтом — процент не различает частицы',
     forecast_median:'Медиана T2',
     forecast_overlay_hypotheses:'Гипотезы:',
@@ -3386,6 +3404,7 @@ const LANG = {
     forecast_yaxis:'HW Doubling (mo)',
     forecast_pagi:'P(T2)',
     postUnidentified:'These four figures are one random draw, not a measurement: the world-model posterior is unidentified, and across independent particle clouds each scenario swings roughly between 1% and 97%. Treat them as undetermined.',
+    postMarginalised:'Each particle is scored under all four scenarios and its weight split by the fit. {n} of 4 scenarios remain open: the data does not fully tell them apart.',
     t2past:'    already past', t2reach:'reached in window', t2degen:'cutoff past horizon - the percentage does not separate particles',
     forecast_median:'Median T2',
     forecast_overlay_hypotheses:'Hypotheses:',
