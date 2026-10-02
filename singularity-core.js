@@ -1202,6 +1202,76 @@ function simulateToYear(particle, targetYear, cfg) {
   return readCapabilities(st, cfg);
 }
 
+// Per-particle log-likelihood of one observation record. Extracted 2026-10-03
+// from observeRealData so that the scenario marginalisation below reuses the
+// exact same likelihood instead of a second copy that would drift.
+function particleLogLik(p, year, obs, cfg, sigmas) {
+  if (p.hw_months < 1.0 || p.agency_ceiling < 1.0) return { logLik: -Infinity, count: 0 };
+
+  const pred = simulateToYear(p, year, cfg);
+  const metrics = getNumericObservables(pred.reasoning, pred.agency, pred.embodiment, cfg.EXPERT);
+
+  let logLik = 0;
+  let count = 0;
+  const baseSigmaMult = cfg.EXPERT.observationNoiseSigma || 1.0;
+  const usePerPoint = cfg.EXPERT.observationSigmaMode === 'perPoint';
+
+  // Helper: returns sigma for a given dimension (per-point if available, else global)
+  const sig = (dim, globalKey) => {
+    if (usePerPoint && obs[dim + '_sigma'] !== undefined) {
+      return obs[dim + '_sigma'] * baseSigmaMult;
+    }
+    return (sigmas[globalKey] || 1.0) * baseSigmaMult;
+  };
+
+  if (obs.sweBench !== undefined) {
+    logLik -= 0.5 * ((obs.sweBench - metrics.sweBench) / sig('sweBench', 'sweBench'))**2;
+    count++;
+  }
+  if (obs.arcAgi !== undefined) {
+    logLik -= 0.5 * ((obs.arcAgi - metrics.arcAgi) / sig('arcAgi', 'arcAgi'))**2;
+    count++;
+  }
+  if (obs.arenaElo !== undefined) {
+    logLik -= 0.5 * ((obs.arenaElo - metrics.arenaElo) / sig('arenaElo', 'arenaElo'))**2;
+    count++;
+  }
+  if (obs.trainingFlopsLog !== undefined) {
+    logLik -= 0.5 * ((obs.trainingFlopsLog - metrics.flopsLog) / sig('trainingFlopsLog', 'flopsLog'))**2;
+    count++;
+  }
+  if (obs.horizon !== undefined) {
+    const obsHorizonLog = Math.log10(Math.max(0.01, obs.horizon));
+    logLik -= 0.5 * ((obsHorizonLog - metrics.horizon) / sig('horizon', 'horizon'))**2;
+    count++;
+  }
+  if (obs.simToReal !== undefined) {
+    logLik -= 0.5 * ((obs.simToReal - metrics.simToReal) / sig('simToReal', 'simToReal'))**2;
+    count++;
+  }
+  if (obs.moravec !== undefined) {
+    logLik -= 0.5 * ((obs.moravec - metrics.moravec) / sig('moravec', 'moravec'))**2;
+    count++;
+  }
+  if (obs.autoAssembly !== undefined) {
+    const obsAutoAssemblyLog = Math.log10(Math.max(0.001, obs.autoAssembly));
+    logLik -= 0.5 * ((obsAutoAssemblyLog - metrics.autoAssembly) / sig('autoAssembly', 'autoAssembly'))**2;
+    count++;
+  }
+
+  // 9) Real embodiment index: prior on particle.embodiment_ceiling from real robotics
+  const rrWeight = cfg.EXPERT.realRoboticsWeight || 0;
+  if (rrWeight > 0) {
+    const realIdx = realEmbodimentIndexAt(year);
+    const rrSigma = (1.5 / Math.max(0.01, rrWeight));
+    logLik -= 0.5 * ((realIdx - pred.embodiment) / rrSigma) ** 2;
+    logLik -= Math.log(rrSigma);
+    count++;
+  }
+
+  return { logLik, count };
+}
+
 class ParticleFilterTracker {
   constructor(nParticles) {
     this.n = nParticles || DEFAULT_PARTICLES;
@@ -1283,70 +1353,9 @@ class ParticleFilterTracker {
       const p = this.particles[i];
       if (p.hw_months < 1.0 || p.agency_ceiling < 1.0) { logLiks[i] = -Infinity; continue; }
 
-      const pred = simulateToYear(p, year, this.cfg);
-      const metrics = getNumericObservables(pred.reasoning, pred.agency, pred.embodiment, this.cfg.EXPERT);
-
-      let logLik = 0;
-      let count = 0;
-      const baseSigmaMult = this.cfg.EXPERT.observationNoiseSigma || 1.0;
-      const usePerPoint = this.cfg.EXPERT.observationSigmaMode === 'perPoint';
-
-      // Helper: returns sigma for a given dimension (per-point if available, else global)
-      const sig = (dim, globalKey) => {
-        if (usePerPoint && obs[dim + '_sigma'] !== undefined) {
-          return obs[dim + '_sigma'] * baseSigmaMult;
-        }
-        return (sigmas[globalKey] || 1.0) * baseSigmaMult;
-      };
-
-      if (obs.sweBench !== undefined) {
-        logLik -= 0.5 * ((obs.sweBench - metrics.sweBench) / sig('sweBench', 'sweBench'))**2;
-        count++;
-      }
-      if (obs.arcAgi !== undefined) {
-        logLik -= 0.5 * ((obs.arcAgi - metrics.arcAgi) / sig('arcAgi', 'arcAgi'))**2;
-        count++;
-      }
-      if (obs.arenaElo !== undefined) {
-        logLik -= 0.5 * ((obs.arenaElo - metrics.arenaElo) / sig('arenaElo', 'arenaElo'))**2;
-        count++;
-      }
-      if (obs.trainingFlopsLog !== undefined) {
-        logLik -= 0.5 * ((obs.trainingFlopsLog - metrics.flopsLog) / sig('trainingFlopsLog', 'flopsLog'))**2;
-        count++;
-      }
-      if (obs.horizon !== undefined) {
-        // Наблюдение в log-шкале (log10 hours), модель предсказывает в той же шкале
-        const obsHorizonLog = Math.log10(Math.max(0.01, obs.horizon));
-        logLik -= 0.5 * ((obsHorizonLog - metrics.horizon) / sig('horizon', 'horizon'))**2;
-        count++;
-      }
-      if (obs.simToReal !== undefined) {
-        logLik -= 0.5 * ((obs.simToReal - metrics.simToReal) / sig('simToReal', 'simToReal'))**2;
-        count++;
-      }
-      if (obs.moravec !== undefined) {
-        logLik -= 0.5 * ((obs.moravec - metrics.moravec) / sig('moravec', 'moravec'))**2;
-        count++;
-      }
-      if (obs.autoAssembly !== undefined) {
-        // Наблюдение в log-шкале (log10 hours), модель предсказывает в той же шкале
-        const obsAutoAssemblyLog = Math.log10(Math.max(0.001, obs.autoAssembly));
-        logLik -= 0.5 * ((obsAutoAssemblyLog - metrics.autoAssembly) / sig('autoAssembly', 'autoAssembly'))**2;
-        count++;
-      }
-
-      // 9) Real embodiment index: prior на particle.embodiment_ceiling от реальной робототехники
-      // sigma для этого prior управляется weight (0..1): weight=0 → штраф 0, weight=1 → sigma=1.0
-      const rrWeight = this.cfg.EXPERT.realRoboticsWeight || 0;
-      if (rrWeight > 0) {
-        const realIdx = realEmbodimentIndexAt(year);
-        const rrSigma = (1.5 / Math.max(0.01, rrWeight)); // weight=0.3 → sigma=5; weight=1 → sigma=1.5
-        // Сравниваем с предсказанным embodiment (pred.embodiment), а не с потолком частицы
-        logLik -= 0.5 * ((realIdx - pred.embodiment) / rrSigma) ** 2;
-        logLik -= Math.log(rrSigma); // normalization constant for proper likelihood
-        count++;
-      }
+      const { logLik: _ll, count: _c } = particleLogLik(p, year, obs, this.cfg, sigmas);
+      let logLik = _ll;
+      let count = _c;
 
       // CORRECTED LIKELIHOOD: proper product of Gaussians (sum of log-likelihoods),
       // not exp(mean(log-lik)). This makes each benchmark contribute its full
