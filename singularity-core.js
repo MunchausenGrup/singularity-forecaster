@@ -264,6 +264,7 @@ const EXPERT_CONFIG = {
   // Share of particles whose DISCRETE world_model is re-drawn from the prior on each resampling step.
   // PATCH 7 set this at a hardcoded 0.03. Because the re-draw ignores the likelihood entirely, it injects prior mass in proportion to how often resampling fires, and with 17 sequential observations that was enough to drag the posterior back toward the prior and leave the world-model shares swinging across ~97 points between particle clouds.
   worldModelRejuvenation: 0.03,
+  scenarioMarginalCache: null,   // lazy: filled on first read, see marginalScenarioShares()
   observationSigmaMode: 'global',  // 'global' = BENCHMARK_SIGMAS; 'perPoint' = локальные *_sigma из точек данных
   // --- PLATEAU SCENARIO (затяжной T1 без прогресса) ---
   plateauHardWallCeiling: 5.5,     // [Plateau] Потолок agency_ceiling для hard_wall (5.5 = остановка роста)
@@ -1343,6 +1344,9 @@ class ParticleFilterTracker {
   }
 
   observeRealData(year, obs, sigmas = BENCHMARK_SIGMAS) {
+    if (!this._obs) this._obs = [];
+    if (!this._obsStamp) this._obsStamp = 0;
+    this._obs.push({ year, obs });
     // Two-pass particle update with log-sum-exp normalisation.
     // Pass 1 collects per-particle log-likelihood; pass 2 normalises. Using
     // log-weights (rather than multiplying exp() into the weight directly)
@@ -1441,6 +1445,105 @@ class ParticleFilterTracker {
       this.weights.fill(1.0 / this.n);
     }
     this.observationLog.push({ year, ...obs });
+  }
+
+  // Scenario shares with the discrete world model MARGINALISED rather than
+  // sampled. Each particle carries one world_model drawn at construction, and
+  // the likelihood barely moves that label, so the share reported by getSummary
+  // is mostly "what fraction of the initial draw happened to be cascade".
+  //
+  // Here every particle is scored under all four scenarios, the four
+  // log-likelihoods are turned into a proper distribution by log-sum-exp, and
+  // the particle's weight is split across scenarios by that distribution. The
+  // discrete draw then stops mattering: a particle contributes to every
+  // scenario it could plausibly be, weighted by how well each explains the data.
+  //
+  // Lazy on purpose. This costs four likelihood evaluations per particle, so it
+  // is computed on first read and cached; the cached object is invalidated
+  // whenever the weights or the particles change.
+  marginalScenarioShares(sigmas = BENCHMARK_SIGMAS) {
+    if (this._margCache && this._margCacheStamp === this._weightStamp()) {
+      return this._margCache;
+    }
+
+    const MODELS = ['cascade', 'hard_wall', 'slow_takeoff', 'resilient_civ'];
+    const obs = this._obs || [];
+    if (obs.length === 0) {
+      const empty = { shares: {}, effSupport: 0, marginalised: true, note: 'no-observations' };
+      this._margCache = empty;
+      this._margCacheStamp = this._weightStamp();
+      return empty;
+    }
+
+    // One pass over the particles, four scenario evaluations each. Each
+    // particle's four log-likelihoods become a distribution by log-sum-exp, and
+    // its weight is split across the scenarios by that distribution.
+    const shares = { cascade: 0, hard_wall: 0, slow_takeoff: 0, resilient_civ: 0 };
+    const post = new Array(MODELS.length);
+    const ll = new Array(MODELS.length);
+    let totalW = 0;
+    for (let i = 0; i < this.n; i++) totalW += this.weights[i];
+
+    let effSupport = 0;
+    for (let i = 0; i < this.n; i++) {
+      const p = this.particles[i];
+      const w = totalW > 0 ? this.weights[i] / totalW : 1.0 / this.n;
+
+      let maxLl = -Infinity;
+      for (let m = 0; m < MODELS.length; m++) {
+        const trial = Object.assign({}, p, { world_model: MODELS[m] });
+        let acc = 0, any = false;
+        for (const o of obs) {
+          const r = particleLogLik(trial, o.year, o.obs, this.cfg, sigmas);
+          if (r.count > 0 && isFinite(r.logLik)) { acc += r.logLik; any = true; }
+        }
+        ll[m] = any ? acc : -Infinity;
+        if (ll[m] > maxLl) maxLl = ll[m];
+      }
+
+      if (!isFinite(maxLl)) {
+        // Degenerate particle (invalid params or no usable observation): it
+        // cannot inform the scenario split, so fall back to its own label
+        // rather than inventing a distribution.
+        shares[p.world_model] = (shares[p.world_model] || 0) + w;
+        effSupport += 1.0;
+        continue;
+      }
+
+      let z = 0, s2 = 0;
+      for (let m = 0; m < MODELS.length; m++) {
+        post[m] = isFinite(ll[m]) ? Math.exp(ll[m] - maxLl) : 0;
+        z += post[m];
+      }
+      for (let m = 0; m < MODELS.length; m++) {
+        const frac = z > 0 ? post[m] / z : 0;
+        shares[MODELS[m]] += w * frac;
+        s2 += frac * frac;
+      }
+      effSupport += s2 > 0 ? 1.0 / s2 : 1.0;
+    }
+    effSupport /= this.n;
+
+    for (const k of MODELS) shares[k] = shares[k] || 0;
+    const tot = MODELS.reduce((a, k) => a + shares[k], 0);
+    if (tot > 0) for (const k of MODELS) shares[k] /= tot;
+
+    const out = {
+      shares,
+      effSupport,
+      marginalised: true,
+      note: 'world model marginalised over 4 scenarios; the per-particle draw no longer drives these numbers',
+    };
+    this._margCache = out;
+    this._margCacheStamp = this._weightStamp();
+    return out;
+  }
+
+  _weightStamp() {
+    // Cheap change detector for the cache: sum of weights plus particle count.
+    let s = 0;
+    for (let i = 0; i < this.n; i++) s += this.weights[i];
+    return s + this.n * 1e-6;
   }
 
   getSummary() {
