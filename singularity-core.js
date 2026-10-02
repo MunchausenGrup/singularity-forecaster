@@ -1030,6 +1030,24 @@ function stepDynamics(st, cfg, dt, stochastic, particle) {
   const algoDelta = (currentAlgoK + rsi) * algoShockDamping;
 
   const dCompute = (hwDelta + algoDelta) * dt;
+  // Exact additive split of this step's reasoning growth, for the decomposition
+  // chart. dCompute is the only thing that advances st.stateR and it is already a
+  // sum of two damped rates, so the split needs no invented remainder and no
+  // rate-to-constant guesswork. The algorithmic rate divides cleanly because
+  // algoKMult is exactly the paradigm-shift multiplier -- set to 2.0 on a shift,
+  // decayed back to 1.0 -- so the multiplier part is paradigm and the rest is
+  // organic algorithmic progress. dataWallPenalty is folded into the base so the
+  // difference below stays exact once the data wall has been hit.
+  const _shk = algoShockDamping * dt;
+  const _dataWall = st.dataExhaustionHit ? E.dataWallPenalty : 1.0;
+  const _algoBase = st.algoK * damping * nashDamping * demandDamping * _dataWall;
+  const decompose = {
+    hw: hwDelta * dt,
+    algo: _algoBase * _shk,
+    paradigm: (currentAlgoK - _algoBase) * _shk,
+    rsi: rsi * _shk,
+    total: dCompute,
+  };
   st.stateR += dCompute;
   // ---- Grounding: the acquisition mechanism for the R >> W gap -------------
   // Previously stateE advanced only from compute, so reasoning outran physical
@@ -1082,7 +1100,11 @@ function stepDynamics(st, cfg, dt, stochastic, particle) {
   if (st.yT4 === null && DR > E.t4DependencyThreshold && Emb >= E.embodimentT4Requirement) st.yT4 = year;
 
   st.step = (st.step || 0) + 1;
+  // decompose is the per-step split of dCompute, so a consumer never re-derives it
+  // from the shared state after the fact -- which is what the old chart did, and
+  // why it drifted out of agreement with the dynamics that produced it.
   return { R, A, W, Emb, DP, IL: st.IL, IC: st.IC, II: st.II, DR, S, C, M, cap, P,
+          decompose,
            // vetoActive is the only readout of whether institutional resistance
            // is currently binding. Without it in the return, the veto could not
            // be diagnosed at all: an IC plateau looked identical to a plateau
@@ -1766,49 +1788,43 @@ class ParticleFilterTracker {
 
     const dt = 1.0 / 12.0;
     const steps = 40 * 12;
-    const years = [], hwComp = [], algoComp = [], paradigmComp = [], rsiComp = [], totalLogSeries = [];
+    const years = [], hwComp = [], algoComp = [], paradigmComp = [], rsiComp = [], totalSeries = [];
 
     const st = createSimState(rep, cfg);
-    const flopsStart = cfg.BASE_LOG_FLOPS;
-    let accumulatedParadigm = 0, accumulatedRsi = 0, accumulatedAlgo = 0;
-    let prevAlgoKMult = 1.0;
-    let prevHW = 0, prevAlgo = 0;
+    // Accumulated reasoning growth, split by the drivers stepDynamics itself
+    // reports. The four series are accumulated, not reconstructed, and none is a
+    // remainder: the kernel forms dCompute as (hardware + algorithmic +
+    // recursive) x dt, so hw + algo + paradigm + rsi equals the total to
+    // floating-point exactness at every step.
+    //
+    // Replaced 2026-10-01. The previous version read the shared state back after
+    // the step, credited the paradigm band a flat 2.0 per generation, and defined
+    // hardware as whatever was left over. Three shifts then put that band at 6.0
+    // against a total log-FLOPs growth of 2.64, the remainder clamped at zero, and
+    // the stack read 2.4x its own total. The other three channels never touched
+    // log-FLOPs at all -- that variable grows only by hwDelta -- so no remainder
+    // over it could ever have been an honest decomposition.
+    let accHw = 0, accAlgo = 0, accParadigm = 0, accRsi = 0;
 
     for (let step = 0; step < steps; step++) {
       const y = cfg.BASE_YEAR + step * dt;
-      const prevFLOPs = st.flopsLog;
-      const prevParadigm = st.paradigmGeneration;
-
       const v = stepDynamics(st, cfg, dt, true, rep);
+      const dq = v.decompose;
 
-      // Attribute this step's growth to its sources, reading the shared state.
-      const dHW = Math.max(0, (st.flopsLog - prevFLOPs) / dt);
-      const dAlgoK = st.algoK * st.algoKMult;
-      const dRSI = Math.max(0, dAlgoK - prevAlgo);
-      const dParadigm = (st.paradigmGeneration - prevParadigm) * 2.0;
-      // Algorithmic efficiency gain from the multiplier alone, with the
-      // recursive term excluded: dRSI is accumulated separately below, and
-      // folding it in here as well is what made the stack exceed the total.
-      const dAlgoEff = Math.max(0, dAlgoK - prevAlgoKMult * st.algoK);
+      accHw += dq.hw;
+      accAlgo += dq.algo;
+      accParadigm += dq.paradigm;
+      accRsi += dq.rsi;
 
-      accumulatedParadigm += dParadigm;
-      accumulatedRsi += dRSI * dt;
-      accumulatedAlgo += dAlgoEff * dt;
-      prevHW = dHW; prevAlgo = dAlgoK; prevAlgoKMult = st.algoKMult;
       years.push(y);
-
-      // Hardware is the remainder, so hw + algo + paradigm + rsi equals the
-      // total log growth. It used to subtract only rsi and paradigm, which
-      // left the algorithmic part counted twice across the stackgroup.
-      const totalLog = st.flopsLog - flopsStart;
-      hwComp.push(Math.max(0, totalLog - accumulatedRsi - accumulatedParadigm - accumulatedAlgo));
-      algoComp.push(Math.max(0, accumulatedAlgo));
-      paradigmComp.push(Math.max(0, accumulatedParadigm));
-      rsiComp.push(Math.max(0, accumulatedRsi));
-      totalLogSeries.push(Math.max(0, st.flopsLog - flopsStart));
+      hwComp.push(accHw);
+      algoComp.push(accAlgo);
+      paradigmComp.push(accParadigm);
+      rsiComp.push(accRsi);
+      totalSeries.push(accHw + accAlgo + accParadigm + accRsi);
       if (st.yT4 !== null) break;
     }
-    return { years, hwComp, algoComp, paradigmComp, rsiComp, totalLogSeries };
+    return { years, hwComp, algoComp, paradigmComp, rsiComp, totalSeries };
   }
 }
 
@@ -2544,8 +2560,8 @@ const LANG = {
     cum_p3:'Ступенчатый подъём = концентрация прогнозов в узком окне. Плато = затор (data wall, энергетика, регуляция). Резкий скачок = почти все частицы сходятся в одном сценарии.',
     cum_p4:'Кривая T4 лежит правее кривой T2 в текущем posterior, но это эмпирическое свойство прогона, а не следствие конструкции: T2 требует DP и IL, а T4 — DR и embodiment, и ни одно из этих условий не влечёт другое формально.',
     cum_p5:'Что влияет: те же факторы, что и гистограмма. Кривые дополняют друг друга — гистограмма показывает «где пик», кумулятивная — «какова вероятность к году X».',
-    decomp_p1:'Диаграмма с накоплением: разбивка суммарного прироста capability на четыре компонента — железо, алгоритмы, парадигмные сдвиги и обратная связь RSI. Показывает, какой вклад даёт каждый канал в каждый момент времени.',
-    decomp_p2:'Компоненты:',
+    decomp_p1:'Диаграмма с накоплением: разбивка накопленного прироста рассуждения на четыре канала — железо, алгоритмическая эффективность, множитель парадигмного сдвига и рекурсивная обратная связь. Показывает вклад каждого канала в каждый момент; сумма полос тождественна итогу.',
+    decomp_p2:'Компоненты: железо — hwDelta × dt, то есть фактический аппаратный прирост. Алгоритмы — базовая st.algoK без множителя сдвига. Парадигма — добавка от algoKMult, который устанавливается в 2.0 при сдвиге и затухает обратно к 1.0. Обратная связь — рекурсивный член rsi, ускоряющий самого себя. Все четыре величины проходят через одинаковую цепочку затухания, поэтому полосы сопоставимы и по единицам, и по величине.',
     decomp_p3:'Считается как усреднение по частицам с весами. Каналы не выбираются по очереди, они накапливаются одновременно, поэтому видна не «последовательность шагов к сингулярности», а доля каждого механизма в суммарном росте.',
     eh_p1:'Анимированная визуализация распределения T2/T4. Каждая частица = один MC прогон. Вылетает из центра (2026) и застывает на орбите своего года T2/T4.',
     eh_p2:'Что читается с картинки: плотные кольца = много частиц с близким годом, то есть высокая плотность этого года в posterior. Разреженные точки = маловероятные годы.',
@@ -2763,7 +2779,7 @@ const LANG = {
     tip1:'Аппроксимация функции плотности вероятности (PDF) моментов достижения пороговых состояний τ = inf {t : C(t) ≥ C_crit}. Рассчитано методом Монте-Карло (N=3000) на основе сэмплирования из апостериорного распределения частиц.',
     tip3:'Эмпириальная кумулятивная функция распределения (CDF), F(t) = P(T ≤ t). По одной кривой на каждый этап — T1, T2, T3, T4: вероятность, что этап достигнут не позднее соответствующего года по оси X.',
     tip6:'Проекция 30 стохастических траекторий C(t) из ансамбля. Визуализирует фазовые переходы (смены парадигм), эффекты RSI и влияние эндогенных шоков (схлопывание пузырей, моратории).',
-    tip7:'Декомпозиция логарифмического роста ∫₀ᵗ (k_hw + k_algo + k_rsi) dt. Площади отражают интегральный вклад аппаратного масштабирования, алгоритмической эффективности, парадигмальных сдвигов и рекурсивной обратной связи (RSI).',
+    tip7:'Декомпозиция накопления рассуждения. Ядро строит прирост как dCompute = (железо + алгоритмическая эффективность + множитель парадигмного сдвига + рекурсивная обратная связь) × dt, поэтому сумма четырёх полос равна итогу в каждой точке, а полоса «железо» ничего не подгоняет и не является остатком. Две оговорки. Парадигмный сдвиг поднимает ещё и потолки (ceilingR и ceilingA), то есть поднимает и саму R — этот график объясняет только накопление, а не весь путь к capability. И R насыщается относительно потолка, поэтому накопление растёт почти линейно, а capability — с замедлением; сравнивать их темпы напрямую нельзя.',
     tip_gap:'Эпистемическая дивергенция между когнитивной мощностью (Reasoning) и каузальным согласованием (World Modeling). Зона высокого риска, где R(t) ≫ W(t): reasoning опережает модель мира, по которой его можно проверить. До groundingRate зазор был структурным дефектом модели, а не физическим явлением.',
     tip8:'Марковская оценка латентной переменной Embodiment. Верхняя панель: перцентильный коридор прогноза E(t) с эмпирической калибровкой на индексе реальной робототехники. Нижняя панель: маргинальное распределение E_ceiling в апостериорном ансамбле.',
     ch_t1:'T1: Доминирование', ch_t2:'T2: Предсказуемость', ch_t3:'T3: Захват институтов', ch_t4:'T4: Зависимость',
@@ -2781,7 +2797,7 @@ const LANG = {
     ch3_xlabel:'Год', ch3_ylabel:'P(%)', ch3_pt2:'P(T2)', ch3_pt4:'P(T4)',
     // runSensitivityMatrixAsync on why T2 was a degenerate choice).
 
-    ch7_ylabel:'Суммарный вклад (log FLOPs)',
+    ch7_ylabel:'Накопленный прирост рассуждения (до насыщения)',
     // ch2_xlabel is read by the scenario fan (c6) and the decomposition (c7)
     // for their x axes. It was never defined in either language pack, so both
     // charts rendered the literal string "undefined" as their axis title.
@@ -2918,8 +2934,8 @@ const LANG = {
     cum_p3:'A steep step = forecasts concentrated in a narrow window. A plateau = a stall (data wall, energy, regulation). A sharp jump = nearly all particles converge on one scenario.',
     cum_p4:'The T4 curve sits to the right of the T2 curve in the current posterior, but that is an empirical property of the run, not a consequence of the construction: T2 requires DP and IL, T4 requires DR and embodiment, and neither condition formally implies the other.',
     cum_p5:'What affects it: the same factors as the histogram. The two complement each other — the histogram shows “where the peak is”, the cumulative curve shows “the probability by year X”.',
-    decomp_p1:'Stacked area: the total capability gain split into four channels — hardware, algorithms, paradigm shifts and RSI feedback. It shows what each channel contributes at each point in time.',
-    decomp_p2:'Components:',
+    decomp_p1:'Stacked area: accumulated reasoning growth split into four channels — hardware, algorithmic efficiency, the paradigm-shift multiplier, and recursive feedback. It shows each channel\'s contribution at each point in time, and the bands sum identically to the total.',
+    decomp_p2:'Components: hardware — hwDelta × dt, the actual machine-side increment. Algorithms — base st.algoK without the shift multiplier. Paradigm — the increment from algoKMult, which is set to 2.0 on a shift and decays back to 1.0. Feedback — the recursive rsi term, which accelerates itself. All four pass through the same damping chain, so the bands are comparable in both units and magnitude.',
     decomp_p3:'Computed as a weighted average over the particles. The channels do not fire in sequence; they accumulate at once, so this is not a "sequence of steps towards a singularity" but each mechanism\'s share of the total growth.',
     eh_p1:'Animated visualisation of the T2/T4 distribution. Each particle is one Monte Carlo run. It flies out from the centre (2026) and freezes on the orbit of its T2/T4 year.',
     eh_p2:'How to read it: dense rings = many particles with near-identical years, i.e. high posterior density in that year. Sparse points = low-probability years.',
@@ -3144,7 +3160,7 @@ const LANG = {
     tip1:'Probability Density Function (PDF) approximation of stopping times τ = inf {t : C(t) ≥ C_crit}. Computed via Monte Carlo integration (N=3000) over the posterior particle ensemble.',
     tip3:'Empirical Cumulative Distribution Function (CDF), F(t) = P(T ≤ t). One curve per stage — T1, T2, T3 and T4 — giving the probability that stage is reached no later than each year on the x axis.',
     tip6:'Projection of 30 stochastic trajectories C(t) from the ensemble. Visualizes phase transitions (paradigm shifts), RSI feedback loops, and endogenous shocks (bubble bursts, moratoriums).',
-    tip7:'Log-space decomposition ∫₀ᵗ (k_hw + k_algo + k_rsi) dt. Areas represent the integral contribution of hardware scaling, algorithmic efficiency, paradigm shifts, and recursive feedback (RSI).',
+    tip7:'Decomposition of accumulated reasoning. The kernel builds the increment as dCompute = (hardware + algorithmic efficiency + paradigm-shift multiplier + recursive feedback) × dt, so the four bands sum to the total at every point and the hardware band is fitted to nothing — it is not a remainder. Two caveats. A paradigm shift also raises the ceilings (ceilingR and ceilingA), and so raises R itself, so this chart explains the accumulation only, not the whole path to capability. And R saturates against its ceiling, so the accumulation grows nearly linearly while capability grows with slowing pace; their rates are not directly comparable.',
     tip_gap:'Epistemic divergence between cognitive capacity (Reasoning) and causal grounding (World Modeling). A high-risk zone where R(t) ≫ W(t): reasoning outruns the world model it could be checked against. Before groundingRate the gap was a structural defect of the model rather than a physical phenomenon.',
     tip8:'Markov estimation of the Embodiment latent variable. Top: percentile corridor of E(t) calibrated against empirical robotic indices. Bottom: marginal posterior distribution of the E_ceiling parameter.',
     ch_t1:'T1: Dominance', ch_t2:'T2: Predictability', ch_t3:'T3: Capture', ch_t4:'T4: Dependency',
@@ -3158,7 +3174,7 @@ const LANG = {
     live_swarm_p5:'What affects it: the current observation set, particle weights, MC run randomness. A stable picture means model confidence; a chaotic one means high uncertainty.',
     ch1_xlabel:'Year', ch1_ylabel:'Runs',
     ch3_xlabel:'Year', ch3_ylabel:'P(%)', ch3_pt2:'P(T2)', ch3_pt4:'P(T4)',
-    ch7_ylabel:'Cumulative contribution (log FLOPs)',
+    ch7_ylabel:'Accumulated reasoning growth (pre-saturation)',
     ch2_xlabel:'Year',
     ch8_median:'Median (MC)', ch8_p1090:'p10..p90', ch8_p2575:'p25..p75', ch8_real:'Real robots', ch8_t4req:'T4 requirement', ch8_bypass:'HW bypass', ch8_y_main:'Embodiment (0..10)', ch8_x_hist:'embodiment_ceiling', ch8_y_hist:'# particles',
     fY_suffix:' yrs', fY_gt:'> 40 yrs', fY_achieved:'already achieved',

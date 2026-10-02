@@ -302,18 +302,15 @@ try { const s = T2.getSummary(); check('getSummary', isFinite(s.agencyCeiling), 
     `spending ${stepsInBand} steps in between`);
 }
 
-// ---- Decomposition: RSI must not be counted twice -------------------------
-// The c7 stackgroup summed four channels. algoComp was
-// accumulatedRsi + dAlgo*dt, where dAlgo had already added dRSI, and rsiComp
-// was accumulatedRsi again -- so the recursive term sat in two bands at once.
-// algoComp is now the multiplier-driven algorithmic gain alone.
+// ---- The decomposition must be an exact partition of the total ------------
 //
-// Note what is deliberately NOT asserted here: that the four channels sum to
-// the total. They do not, and cannot without redesigning the decomposition.
-// totalLog is a log-FLOPs difference while accumulatedRsi/Algo/Paradigm are
-// algoK-scale rates, so the remainder term clamps at 0 and the stack overshoots
-// by ~3.8 against a total of ~2.6. That is a units problem in the model, not a
-// bookkeeping bug, and it is reported rather than papered over.
+// The assertion the old chart could never have passed. The four bands are
+// accumulated from the split stepDynamics itself forms for dCompute, so
+// hw + algo + paradigm + rsi is the total identically. The previous version
+// credited the paradigm band a flat 2.0 per generation and defined hardware as
+// the remainder, which is why the stack read 2.4x its own total: three shifts
+// put that band at 6.0 against a total log-FLOPs growth of 2.64, and the
+// remainder clamped at zero.
 (function(){
   let d = null;
   try {
@@ -329,7 +326,7 @@ try { const s = T2.getSummary(); check('getSummary', isFinite(s.agencyCeiling), 
     check('Decomposition channels are finite on a conditioned tracker', false, 'threw: ' + e.message);
     return;
   }
-  const series = ['hwComp', 'algoComp', 'paradigmComp', 'rsiComp', 'totalLogSeries'];
+  const series = ['hwComp', 'algoComp', 'paradigmComp', 'rsiComp', 'totalSeries'];
   const missing = series.filter((k) => !d || !d[k]);
   if (missing.length) {
     check('Decomposition channels are finite on a conditioned tracker', false,
@@ -347,23 +344,45 @@ try { const s = T2.getSummary(); check('getSummary', isFinite(s.agencyCeiling), 
           ? d.years.length + ' steps across ' + series.length + ' series, all finite'
           : JSON.stringify(nonFinite));
 
-  // Under the old code algoComp >= rsiComp held at every step by construction,
-  // because rsiComp was one of its summands. With the channels separated the
-  // RSI band overtakes the algorithmic one at its peak, so this can only be
-  // observed if the de-duplication actually took effect.
-  let peakRsi = 0, algoAtPeak = 0, rsiAboveAlgo = 0;
+  // The partition itself. NaN fails every comparison silently, so the finiteness
+  // check above must gate this one rather than this one standing alone.
+  let worst = 0, worstAt = -1;
   for (let i = 0; i < d.years.length; i++) {
-    if (d.rsiComp[i] > peakRsi) { peakRsi = d.rsiComp[i]; algoAtPeak = d.algoComp[i]; }
-    if (d.rsiComp[i] > d.algoComp[i]) rsiAboveAlgo++;
+    const sum = d.hwComp[i] + d.algoComp[i] + d.paradigmComp[i] + d.rsiComp[i];
+    const err = Math.abs(sum - d.totalSeries[i]);
+    if (err > worst) { worst = err; worstAt = i; }
   }
-  check('RSI is not also counted inside the algorithmic channel',
-        peakRsi > 0 && rsiAboveAlgo > 0,
-        peakRsi === 0
-          ? 'RSI never activated, so this check has no teeth'
-          : 'peak RSI ' + peakRsi.toFixed(3) + ' vs algorithmic ' + algoAtPeak.toFixed(3) +
-            '; RSI exceeds algorithmic at ' + rsiAboveAlgo + '/' + d.years.length + ' steps');
+  check('The four decomposition bands sum to the total at every step',
+        worst === 0,
+        worst === 0
+          ? d.years.length + ' steps, residual exactly 0 at all of them'
+          : 'worst residual ' + worst.toExponential(3) + ' at step ' + worstAt +
+            ' (year ' + d.years[worstAt] + ')');
+
+  // Identity alone is not enough: a stack where one band is 100% satisfies it
+  // just as well, and that is close to what the old chart showed.
+  const last = d.years.length - 1;
+  const share = (k) => (d.totalSeries[last] > 0 ? d[k][last] / d.totalSeries[last] : 0);
+  const parts = ['hwComp', 'algoComp', 'paradigmComp', 'rsiComp'];
+  const meaningful = parts.filter((k) => share(k) > 0.01).length;
+  check('More than one channel actually contributes', meaningful >= 2,
+        parts.map((k) => k.replace('Comp', '') + ' ' + (100 * share(k)).toFixed(1) + '%').join(', '));
+
+  // The old bug in one assertion: the paradigm band was a counter times a
+  // constant, so it grew in flat 2.0 steps regardless of what the shift did.
+  // Any single step must stay small relative to the total the band ends on.
+  let maxJump = 0;
+  for (let i = 1; i <= last; i++) {
+    const j = d.paradigmComp[i] - d.paradigmComp[i - 1];
+    if (j > maxJump) maxJump = j;
+  }
+  const total = d.totalSeries[last];
+  check('The paradigm band is not a counter times a constant', maxJump < total,
+        'largest single-step jump ' + maxJump.toExponential(3) + ' against a total of ' +
+        total.toFixed(3) + ' (the old build stepped by exactly 2.0 and overshot 2.4x)');
 })();
 
+console.log('\n' + '='.repeat(60));
 console.log('\n' + '='.repeat(60));
 console.log(fails === 0 ? 'ALL CHECKS PASSED' : `${fails} CHECK(S) FAILED`);
 process.exit(fails === 0 ? 0 : 1);

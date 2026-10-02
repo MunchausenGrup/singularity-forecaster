@@ -54,7 +54,7 @@ test/verify.js        headless verification suite (38 checks, no browser)
 
 The model previously carried **three independent ~200-line implementations** of the same dynamics: one for the particle-filter likelihood, one for the Monte-Carlo forecast, and one for the decomposition chart. They had drifted apart, so the Bayesian update calibrated parameters against a different physical model than the one that produced the answer.
 
-There is now exactly one `stepDynamics()` function. `simulateToYear()` (likelihood), `runMonteCarloForecast()` (forecast), `runScenarioOverlay()` and `runDecomposition()` are thin wrappers that sample particles and collect statistics. This removed ~680 lines of duplicated physics.
+There is now exactly one `stepDynamics()` function, and it also returns the per-step additive split of its own increment, so the decomposition chart reads the dynamics rather than reconstructing them from the shared state afterwards. `simulateToYear()` (likelihood), `runMonteCarloForecast()` (forecast), `runScenarioOverlay()` and `runDecomposition()` are thin wrappers that sample particles and collect statistics. This removed ~680 lines of duplicated physics.
 
 ### Reproducibility
 
@@ -81,7 +81,7 @@ const mc = t.runMonteCarloForecast(500);     // 500 = display trajectories; the 
 - The benchmark data is a **hardcoded fallback**. The configured remote JSON endpoint currently returns 404, so the app always runs on the embedded dataset (17 rows, 2022.90 to 2026.72, last point Claude Opus 5.5). The endpoint constant is at the top of `singularity-core.js`.
 - The FLOPs observation channel is a deterministic function of Reasoning, so it cannot independently identify the hardware trajectory. It is retained for continuity but is largely redundant.
 - Results are sensitive to `observationNoiseSigma`; conclusions about T3/T4 move as it changes.
-- The stage-history chart is **not a strict decomposition** of the growth it depicts. The hardware band is a remainder computed as a difference of log-FLOPs, while the recursive, algorithmic and paradigm bands are `algoK`-scale rates, so the stack does not sum to the total and overshoots it once the remainder clamps at zero. The bands are individually meaningful and individually honest about their own units; only the sum is not meaningful, so do not read the total off the stack.
+- The stage-history chart **is** an exact partition: the four bands sum to the total identically at every step, and the hardware band is not a remainder. The kernel forms its per-step increment as `dCompute = (hardware + algorithmic + paradigm multiplier + recursive RSI) × dt`, and the chart accumulates the split the kernel itself reports. Two things it does not explain: a paradigm shift also raises the ceilings `ceilingR` and `ceilingA`, so it lifts `R` through a path this chart shows as zero; and `R` saturates against its ceiling, so the accumulation grows nearly linearly while capability grows with slowing pace. Read the bands as shares of accumulation, not as rates of capability.
 
 ## Development
 
