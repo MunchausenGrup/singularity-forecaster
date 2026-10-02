@@ -81,6 +81,18 @@ const mc = t.runMonteCarloForecast(500);     // 500 = display trajectories; the 
 - The benchmark data is a **hardcoded fallback**. The configured remote JSON endpoint currently returns 404, so the app always runs on the embedded dataset (17 rows, 2022.90 to 2026.72, last point Claude Opus 5.5). The endpoint constant is at the top of `singularity-core.js`.
 - The FLOPs observation channel is a deterministic function of Reasoning, so it cannot independently identify the hardware trajectory. It is retained for continuity but is largely redundant.
 - Results are sensitive to `observationNoiseSigma`; conclusions about T3/T4 move as it changes.
+- **The world-model posterior is not identified, and the page says so.** Eight
+  independent particle clouds at 1000 particles, with no reseeding, produced
+  cascade shares of 1-97%, slow-takeoff 0-97% and resilient-civil 0-65% from the
+  same 17 observations. `P(T3)` tracks that posterior directly: on one fixed seed
+  it reads 96.7%, 20.8% and 92.5% at 1000, 2000 and 4000 particles. More particles
+  do not converge it (the range goes 37.5 -> 25.0 -> 77.5 -> 18.3 points), so the
+  four percentages are a single random draw and are labelled as such on the page.
+  A bootstrap over particles would *understate* this, because it cannot see
+  cloud-to-cloud variation; the honest measure is independent restarts.
+  Consequence: T3 *timing* is usable at high particle counts (the median converges
+  to a 0.83-year spread at 4000 particles, versus 5.17 years at 1000), while
+  reach probabilities and scenario shares are not.
 - The stage-history chart **is** an exact partition: the four bands sum to the total identically at every step, and the hardware band is not a remainder. The kernel forms its per-step increment as `dCompute = (hardware + algorithmic + paradigm multiplier + recursive RSI) × dt`, and the chart accumulates the split the kernel itself reports. Two things it does not explain: a paradigm shift also raises the ceilings `ceilingR` and `ceilingA`, so it lifts `R` through a path this chart shows as zero; and `R` saturates against its ceiling, so the accumulation grows nearly linearly while capability grows with slowing pace. Read the bands as shares of accumulation, not as rates of capability.
 
 ## Development

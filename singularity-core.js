@@ -2001,6 +2001,9 @@ function updateTrackerUI(tracker) {
         Hard Wall (Стена): <span style="color:#ef4444;font-family:monospace">${(sum.postHardWall * 100).toFixed(1)}%</span><br>
         Slow Takeoff (Взлет): <span style="color:#22c55e;font-family:monospace">${(sum.postSlowTakeoff * 100).toFixed(1)}%</span><br>
         Resilient (Иммунитет): <span style="color:#a855f7;font-family:monospace">${(sum.postResilientCiv * 100).toFixed(1)}%</span>
+        <div style="margin-top:8px;padding:6px 8px;border-left:2px solid #d29922;background:rgba(210,153,34,0.08);color:#d29922;font-size:11px">
+          ${L.postUnidentified || 'These four are one random draw, not a measurement.'}
+        </div>
       </div>
     `;
   }
@@ -2892,7 +2895,8 @@ const LANG = {
     forecast_xaxis:'Год T2',
     forecast_yaxis:'Удвоение HW (мес)',
     forecast_pagi:'P(T2)',
-    t2past:'уже в прошлом', t2reach:'достигнут в окне', t2degen:'отсечка за горизонтом — процент не различает частицы',
+    postUnidentified:'Эти четыре числа — один случайный розыгрыш, а не измерение: апостериор по сценариям не идентифицирован, и на независимых облаках частиц каждый сценарий гуляет примерно от 1% до 97%. Считайте их неопределёнными.',
+    t2past:'    уже в прошлом', t2reach:'достигнут в окне', t2degen:'отсечка за горизонтом — процент не различает частицы',
     forecast_median:'Медиана T2',
     forecast_overlay_hypotheses:'Гипотезы:',
     forecast_overlay_by:'к',
@@ -3265,7 +3269,8 @@ const LANG = {
     forecast_xaxis:'T2 Year',
     forecast_yaxis:'HW Doubling (mo)',
     forecast_pagi:'P(T2)',
-    t2past:'already past', t2reach:'reached in window', t2degen:'cutoff past horizon - the percentage does not separate particles',
+    postUnidentified:'These four figures are one random draw, not a measurement: the world-model posterior is unidentified, and across independent particle clouds each scenario swings roughly between 1% and 97%. Treat them as undetermined.',
+    t2past:'    already past', t2reach:'reached in window', t2degen:'cutoff past horizon - the percentage does not separate particles',
     forecast_median:'Median T2',
     forecast_overlay_hypotheses:'Hypotheses:',
     forecast_overlay_by:'by',

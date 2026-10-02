@@ -382,6 +382,39 @@ try { const s = T2.getSummary(); check('getSummary', isFinite(s.agencyCeiling), 
         total.toFixed(3) + ' (the old build stepped by exactly 2.0 and overshot 2.4x)');
 })();
 
+// ---- An unidentified posterior must be labelled as one ---------------------
+//
+// Measured defect, 2026-10-02. Eight independent particle clouds at N=1000, no
+// reseeding, produced cascade shares of 1-97%, slow-takeoff 0-97% and resilient
+// 0-65%: the world-model posterior spans essentially the whole simplex, and
+// P(T3) tracks it directly (96.7% / 20.8% / 92.5% at N=1000 / 2000 / 4000 on one
+// fixed seed). So the four percentages are a single random draw.
+//
+// This test guards the *presentation*: the diagnostic block must not render bare
+// percentages without saying so. It deliberately does not assert a spread value,
+// because the right behaviour when the model is fixed is for this to keep passing
+// unchanged -- it tests the labelling, not the magnitude.
+(function(){
+  const L = G.LANG;
+  let ok = true;
+  const detail = [];
+  for (const lang of Object.keys(L)) {
+    const k = 'postUnidentified';
+    if (typeof L[lang][k] !== 'string' || L[lang][k].length < 40) {
+      ok = false; detail.push(lang + ': missing or too short');
+    }
+  }
+  check('The unidentified-posterior warning exists in every language pack', ok,
+        ok ? Object.keys(L).map((l) => l + ' ' + L[l].postUnidentified.length + ' chars').join(', ')
+           : detail.join('; '));
+
+  // The warning must actually reach the rendered report, not just sit in the pack.
+  const src = require('fs').readFileSync('D:/prod/singularity-forecaster/singularity-core.js', 'utf8');
+  const rendered = /postUnidentified/.test(src.slice(src.indexOf('postCascade \* 100') - 400, src.indexOf('postCascade \* 100') + 1600));
+  check('The diagnostic block renders the warning next to the four percentages', rendered,
+        rendered ? 'found in the report template' : 'the pack key exists but is not rendered');
+})();
+
 console.log('\n' + '='.repeat(60));
 console.log('\n' + '='.repeat(60));
 console.log(fails === 0 ? 'ALL CHECKS PASSED' : `${fails} CHECK(S) FAILED`);
