@@ -261,6 +261,9 @@ const EXPERT_CONFIG = {
   groundingEfficiency: 0.35,           // доля заземления, доходящая до материи
   groundingLabourCost: 0.45,          // доля выигрыша в A, съедаемая заземлением
   // --- OBSERVATION NOISE MODE ---
+  // Share of particles whose DISCRETE world_model is re-drawn from the prior on each resampling step.
+  // PATCH 7 set this at a hardcoded 0.03. Because the re-draw ignores the likelihood entirely, it injects prior mass in proportion to how often resampling fires, and with 17 sequential observations that was enough to drag the posterior back toward the prior and leave the world-model shares swinging across ~97 points between particle clouds.
+  worldModelRejuvenation: 0.03,
   observationSigmaMode: 'global',  // 'global' = BENCHMARK_SIGMAS; 'perPoint' = локальные *_sigma из точек данных
   // --- PLATEAU SCENARIO (затяжной T1 без прогресса) ---
   plateauHardWallCeiling: 5.5,     // [Plateau] Потолок agency_ceiling для hard_wall (5.5 = остановка роста)
@@ -1408,7 +1411,8 @@ class ParticleFilterTracker {
           
           // PATCH 7: Prevent early loss of world model diversity via 3% rejuvenation (mutation)
           world_model: (() => {
-            if (rnd() < 0.03) {
+            const rejuvenate = this.cfg.EXPERT.worldModelRejuvenation !== undefined ? this.cfg.EXPERT.worldModelRejuvenation : 0.03;
+            if (rejuvenate > 0 && rnd() < rejuvenate) {
               const r = rnd();
               const w = EXPERT_CONFIG.worldModels;
               const totalWM = (w.cascade || 0) + (w.hardWall || 0) + (w.slowTakeoff || 0) + (w.resilientCiv || 0);
