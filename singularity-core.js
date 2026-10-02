@@ -2892,6 +2892,7 @@ const LANG = {
     forecast_xaxis:'Год T2',
     forecast_yaxis:'Удвоение HW (мес)',
     forecast_pagi:'P(T2)',
+    t2past:'уже в прошлом', t2reach:'достигнут в окне', t2degen:'отсечка за горизонтом — процент не различает частицы',
     forecast_median:'Медиана T2',
     forecast_overlay_hypotheses:'Гипотезы:',
     forecast_overlay_by:'к',
@@ -3264,6 +3265,7 @@ const LANG = {
     forecast_xaxis:'T2 Year',
     forecast_yaxis:'HW Doubling (mo)',
     forecast_pagi:'P(T2)',
+    t2past:'already past', t2reach:'reached in window', t2degen:'cutoff past horizon - the percentage does not separate particles',
     forecast_median:'Median T2',
     forecast_overlay_hypotheses:'Hypotheses:',
     forecast_overlay_by:'by',
@@ -3573,17 +3575,34 @@ function swarmDrawForecast(ctx, w, h, pad, pw, ph) {
   }
 
   // Count visible (AGI year <= cutoff) and compute median among visible
-  let totalW = 0, visW = 0;
+  // Three different quantities live here, and conflating them is what made this
+  // panel read "P(T2) = 100%" at the default cutoff:
+  //   visW   -- reached T2 at or before the cutoff (what the label claims)
+  //   pastW  -- reached T2 at or before the pinned current year, i.e. already done
+  //   reachW -- reached T2 at all inside the simulated window
+  // visW/totalW is a forecast only while the cutoff sits inside the window. At the
+  // default cutoff of 2068, with the T2 median at 2026.4, every particle passes it
+  // and the number is a tautology. pastW/reachW do not degenerate at that setting.
+  let totalW = 0, visW = 0, pastW = 0, reachW = 0;
   const visPts = [];
   for (let i = 0; i < years.length; i++) {
     const pt = years[i];
     const wt = pt.w;
     totalW += wt;
-    if (isFinite(pt.year) && pt.year <= cutoff) {
-      visW += wt;
-      visPts.push({ x: pt.year, y: pt.hw, w: wt });
+    if (isFinite(pt.year)) {
+      reachW += wt;
+      if (pt.year <= PINNED_CURRENT_YEAR) pastW += wt;
+      if (pt.year <= cutoff) {
+        visW += wt;
+        visPts.push({ x: pt.year, y: pt.hw, w: wt });
+      }
     }
   }
+  // A cutoff past the last simulated T2 cannot discriminate between particles, so
+  // the percentage is flagged rather than presented as a finding.
+  let maxYear = -Infinity;
+  for (const p of visPts) if (p.x > maxYear) maxYear = p.x;
+  const degenerate = isFinite(maxYear) && cutoff > maxYear + 1e-9;
 
   // color scale
   function agiColor(t) {
@@ -3626,10 +3645,24 @@ function swarmDrawForecast(ctx, w, h, pad, pw, ph) {
 
   // stats
   const pct = totalW > 0 ? (visW / totalW * 100) : 0;
+  const pctPast = reachW > 0 ? (pastW / reachW * 100) : 0;
+  const pctReach = totalW > 0 ? (reachW / totalW * 100) : 0;
   const pLabel = L.forecast_pagi || 'P(T2)';
   const mLabel = L.forecast_median || 'Median T2';
-  ctx.fillStyle = '#f0883e'; ctx.font = 'bold 11px JetBrains Mono, monospace'; ctx.textAlign = 'left';
-  ctx.fillText(`${pLabel}: ${pct.toFixed(1)}%`, pad + 4, pad + 12);
+  // When the cutoff outruns the last simulated T2, visW/totalW is 100% for every
+  // particle that ever reaches the stage, so it measures the slider, not the
+  // world. It is drawn dimmed and marked, and the two non-degenerate rates carry
+  // the actual information.
+  ctx.fillStyle = degenerate ? '#666680' : '#f0883e';
+  ctx.font = 'bold 11px JetBrains Mono, monospace'; ctx.textAlign = 'left';
+  ctx.fillText(`${pLabel}: ${pct.toFixed(1)}%` + (degenerate ? ' *' : ''), pad + 4, pad + 12);
+  ctx.fillStyle = '#8b949e'; ctx.font = '9px JetBrains Mono, monospace';
+  ctx.fillText(`${L.t2past || 'past now'}: ${pctPast.toFixed(1)}%  ${L.t2reach || 'reach'}: ${pctReach.toFixed(1)}%`,
+    pad + 4, pad + 24);
+  if (degenerate) {
+    ctx.fillStyle = '#666680';
+    ctx.fillText(L.t2degen || 'cutoff past horizon', pad + 4, pad + 34);
+  }
 
   if (visPts.length > 0) {
     visPts.sort((a, b) => a.x - b.x);
@@ -4612,6 +4645,7 @@ globalThis.__SINGULARITY_CORE__ = {
   stepDynamics,
   createSimState,
   runParticle,
+  swarmComputeAGIYears,
   readCapabilities,
   computeDependency,
   applyParadigmShift,
