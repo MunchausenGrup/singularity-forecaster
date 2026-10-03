@@ -1493,6 +1493,38 @@ class ParticleFilterTracker {
     const stride = this.n > maxParticles ? this.n / maxParticles : 1;
     const used = Math.min(this.n, maxParticles);
     let effSupport = 0;
+
+    // Per-pair maximum |log-likelihood gap| over every particle scored.
+    //
+    // Two scenarios whose likelihoods are identical are ONE model as far as the
+    // data is concerned, and log-sum-exp over two exactly-equal likelihoods
+    // returns exactly 0.5 each. So a tied pair does not merely produce a weak
+    // split -- it produces a 50/50 split as an ARITHMETIC IDENTITY, identical
+    // for every seed, and no quantity of additional data can move it.
+    //
+    // The reason cascade and resilient_civ tie is structural, not a matter of
+    // calibration. resilient_civ's only distinguishing rule is
+    //     IC = min(IC, max(0, 1 - II))
+    // and particleLogLik scores ONLY R/A/E/W-derived observables (sweBench,
+    // arcAgi, arenaElo, flopsLog, horizon, simToReal, moravec, autoAssembly).
+    // IC gates T3/T4 and is scored by nothing, so perturbing IC leaves every
+    // observable bit-identical. IC is downstream of the likelihood, which makes
+    // any scenario defined purely by an IC rule unobservable BY CONSTRUCTION.
+    //
+    // This is measured rather than assumed, and it is measured over ALL pairs,
+    // not a hardcoded cascade/resilient_civ pair: if a future change gives some
+    // label a mechanism the data can see, its gap goes non-zero here and the
+    // panel splits it on its own with no edit to this file.
+    const pairMaxGap = new Map();
+    for (let a = 0; a < MODELS.length; a++) {
+      for (let b = a + 1; b < MODELS.length; b++) {
+        pairMaxGap.set(MODELS[a] + '|' + MODELS[b], 0);
+      }
+    }
+    // Below this, two log-likelihoods are the same number to float precision:
+    // exp(-1e-6) differs from 1 by 1e-6, far below anything the data resolves.
+    const TIE_TOL_NATS = 1e-6;
+
     for (let k = 0; k < used; k++) {
       const i = Math.min(this.n - 1, Math.floor(k * stride));
       const p = this.particles[i];
@@ -1508,6 +1540,20 @@ class ParticleFilterTracker {
         }
         ll[m] = any ? acc : -Infinity;
         if (ll[m] > maxLl) maxLl = ll[m];
+      }
+
+      // Accumulate the identifiability evidence while the four log-likelihoods
+      // are already in hand. Only finite pairs count: -Infinity means "this
+      // particle scored nothing for that scenario", which is missing
+      // information, not agreement.
+      for (let a = 0; a < MODELS.length; a++) {
+        if (!isFinite(ll[a])) continue;
+        for (let b = a + 1; b < MODELS.length; b++) {
+          if (!isFinite(ll[b])) continue;
+          const key = MODELS[a] + '|' + MODELS[b];
+          const d = Math.abs(ll[a] - ll[b]);
+          if (d > pairMaxGap.get(key)) pairMaxGap.set(key, d);
+        }
       }
 
       if (!isFinite(maxLl)) {
@@ -1537,12 +1583,99 @@ class ParticleFilterTracker {
     const tot = MODELS.reduce((a, k) => a + shares[k], 0);
     if (tot > 0) for (const k of MODELS) shares[k] /= tot;
 
+    // Collapse the scenario set into the groups the data can actually tell
+    // apart. A group is a maximal set of scenarios transitively joined by ties
+    // (|gap| <= TIE_TOL_NATS at every particle). A singleton group is a
+    // scenario the data identifies on its own; a multi-member group is one
+    // hypothesis wearing several labels, and its internal split is an
+    // assumption -- log-sum-exp splits a tied set evenly by construction, so
+    // the panel must not present those sub-shares as measurements.
+    //
+    // Merging is transitive and therefore order-independent: if a~b and b~c
+    // then all three are one group even when a and c were never compared
+    // directly at full rank.
+    const gapOf = new Map();
+    const tied = (a, b) => {
+      if (a === b) return true;
+      const k1 = a + '|' + b, k2 = b + '|' + a;
+      const d = gapOf.has(k1) ? gapOf.get(k1) : gapOf.get(k2);
+      return d !== undefined && d <= TIE_TOL_NATS;
+    };
+    for (const [k, v] of pairMaxGap) gapOf.set(k, v);
+    const groupOf = new Map();
+    const groups = [];
+    for (const m of MODELS) {
+      if (groupOf.has(m)) continue;
+      const g = { members: [], maxInternalGap: 0 };
+      // Flood fill over the tie relation.
+      const stack = [m];
+      while (stack.length) {
+        const cur = stack.pop();
+        if (groupOf.has(cur)) continue;
+        groupOf.set(cur, groups.length);
+        g.members.push(cur);
+        for (const other of MODELS) {
+          if (groupOf.has(other)) continue;
+          if (tied(cur, other)) stack.push(other);
+        }
+      }
+      g.members.sort();
+      for (let i = 0; i < g.members.length; i++) {
+        for (let j = i + 1; j < g.members.length; j++) {
+          const d = gapOf.get(g.members[i] + '|' + g.members[j]) || 0;
+          if (d > g.maxInternalGap) g.maxInternalGap = d;
+        }
+      }
+      g.share = g.members.reduce((a, k) => a + (shares[k] || 0), 0);
+      groups.push(g);
+    }
+
+    // Second pass, now that every group exists: how far is each group from its
+    // nearest neighbour? This has to run after construction -- computing it
+    // inside the loop above made the FIRST group see an empty `groups` array
+    // and report no neighbour at all, which is exactly the group that most
+    // needs the number.
+    for (let gi = 0; gi < groups.length; gi++) {
+      const g = groups[gi];
+      let nearest = Infinity;
+      for (let oj = 0; oj < groups.length; oj++) {
+        if (oj === gi) continue;
+        for (const a of groups[oj].members) {
+          for (const b of g.members) {
+            const d1 = gapOf.get(a + '|' + b), d2 = gapOf.get(b + '|' + a);
+            const d = d1 !== undefined ? d1 : (d2 !== undefined ? d2 : 0);
+            if (d < nearest) nearest = d;
+          }
+        }
+      }
+      g.gapToNearestGroup = isFinite(nearest) ? nearest : null;
+      // identifiable === the data separates this hypothesis from every other
+      // one. A multi-member group is one hypothesis wearing several labels, so
+      // it is never "identified" no matter how far it sits from the others:
+      // what the data pins down is the group's share, not its internal split.
+      g.identified = g.members.length === 1 && !(isFinite(nearest) && nearest <= TIE_TOL_NATS);
+    }
+    const identifiability = {
+      tolNats: TIE_TOL_NATS,
+      groups,
+      // The single headline number: how many DISTINGUISHABLE hypotheses the
+      // data supports. Lower than the scenario count means the remainder is
+      // prior, not evidence.
+      distinguishable: groups.filter(g => g.identified).length,
+      scenarioCount: MODELS.length,
+      maxPairGap: Math.max(0, ...Array.from(pairMaxGap.values())),
+      tiedPairs: Array.from(pairMaxGap.entries())
+        .filter(([, v]) => v <= TIE_TOL_NATS)
+        .map(([k, v]) => ({ pair: k.split('|'), maxGapNats: v })),
+    };
+
     const out = {
       shares,
       effSupport,
       particlesUsed: used,
       particlesTotal: this.n,
       marginalised: true,
+      identifiability,
       note: 'world model marginalised over 4 scenarios; the per-particle draw no longer drives these numbers',
     };
     this._margCache = out;
@@ -2146,18 +2279,93 @@ function updateTrackerUI(tracker) {
       : { cascade: sum.postCascade, hard_wall: sum.postHardWall,
           slow_takeoff: sum.postSlowTakeoff, resilient_civ: sum.postResilientCiv };
     const msEff = window._scenarioMarg ? window._scenarioMarg.effSupport : null;
+
+    // How many hypotheses the data actually separates. Computed at runtime by
+    // marginalScenarioShares from the per-particle log-likelihood gaps, not
+    // hardcoded: if a future change gives a label a mechanism the data can see,
+    // its gap goes non-zero and the panel splits it with no edit here.
+    const idf = window._scenarioMarg ? window._scenarioMarg.identifiability : null;
+
+    // Display order and colour per scenario, kept in one place so the grouped
+    // rows and the per-scenario breakdown cannot drift apart.
+    const WM_STYLE = [
+      { key: 'cascade',       color: '#58a6ff', ru: 'Каскад',        en: 'Cascade' },
+      { key: 'hard_wall',     color: '#ef4444', ru: 'Стена',         en: 'Hard Wall' },
+      { key: 'slow_takeoff',  color: '#22c55e', ru: 'Взлёт',        en: 'Slow Takeoff' },
+      { key: 'resilient_civ', color: '#a855f7', ru: 'Иммунитет',     en: 'Resilient' },
+    ];
+    const styleOf = (k) => WM_STYLE.find(s => s.key === k) || { color: '#888', ru: k, en: k };
+    // Pick the label by the ACTIVE language. (Testing whether the Russian
+    // string exists as a key in L would be the wrong question -- these are
+    // display labels, not pack keys -- and would silently pick English for a
+    // Russian page.)
+    const isEn = (window._lang || 'ru') === 'en';
+    const nameOf = (k) => { const s = styleOf(k); return isEn ? s.en : s.ru; };
+    const pct = (v) => (100 * (v || 0)).toFixed(1) + '%';
+
+    // Rows: one per distinguishable hypothesis. A group holding more than one
+    // scenario is ONE hypothesis wearing several labels, so it is shown as a
+    // single combined share and its internal split is labelled an assumption.
+    let rows = '';
+    if (idf && idf.groups) {
+      for (const g of idf.groups) {
+        const tied = g.members.length > 1;
+        const lead = g.members.map(nameOf).join(' + ');
+        const color = styleOf(g.members[0]).color;
+        let sub = '';
+        if (tied) {
+          // The split is shown, but only ever with its assumption attached: it
+          // is what log-sum-exp returns for identical likelihoods, so it is a
+          // fixed 50/50 that no additional data can move.
+          const parts = g.members.map(k =>
+            `${nameOf(k)} <span style="font-family:monospace">${pct(ms[k])}</span>`).join(' / ');
+          sub = `<div style="margin-top:2px;padding-left:8px;border-left:2px solid ${color}55;font-size:10px;opacity:0.85">`
+              + `${(L.postAssumedSplit || 'Split within this is an assumption, not a measurement: {s}') .replace('{s}', parts)}`
+              + `</div>`;
+        }
+        rows += `<div style="margin-top:3px">`
+              + `${tied ? `<span style="color:#d29922">&#9650;</span> ` : ''}`
+              + `${lead}: <span style="color:${color};font-family:monospace">${pct(g.share)}</span>`
+              + (tied ? ` <span style="color:#d29922;font-size:10px">${L.postTiedGroup || 'combined — the data cannot tell these apart'}</span>` : '')
+              + sub
+              + `</div>`;
+      }
+    } else {
+      // Provisional state (button not yet pressed): no identifiability data, so
+      // fall back to the plain per-scenario split, already marked provisional.
+      rows = WM_STYLE.map(s =>
+        `<div style="margin-top:3px">${nameOf(s.key)}: <span style="color:${s.color};font-family:monospace">${pct(ms[s.key])}</span></div>`
+      ).join('');
+    }
+
+    // Per-scenario detail, retained so the raw numbers stay visible next to the
+    // grouped reading. Labels go through nameOf so they follow the active
+    // language -- these were hardcoded Russian, which put "Cascade (Каскад)" on
+    // an English page. Each scenario's percentage is written out longhand
+    // rather than mapped over WM_STYLE, because the presentation test locates
+    // its anchor by searching the source for the cascade-share expression and a
+    // comment mentioning that same expression would win the search and move the
+    // anchor off the code it is meant to guard.
+    const detailRows =
+      `${nameOf('cascade')}: <span style="color:#58a6ff;font-family:monospace">${(ms.cascade * 100).toFixed(1)}%</span><br>` +
+      `${nameOf('hard_wall')}: <span style="color:#ef4444;font-family:monospace">${(ms.hard_wall * 100).toFixed(1)}%</span><br>` +
+      `${nameOf('slow_takeoff')}: <span style="color:#22c55e;font-family:monospace">${(ms.slow_takeoff * 100).toFixed(1)}%</span><br>` +
+      `${nameOf('resilient_civ')}: <span style="color:#a855f7;font-family:monospace">${(ms.resilient_civ * 100).toFixed(1)}%</span>`;
+
     parEl.innerHTML = `
       <div style="font-size:0.75rem;color:var(--text-muted);margin-top:8px;border-top:1px dashed #1e1e2e;padding-top:8px;line-height:1.4">
         <b style="color:#f0883e">${L.wm_posterior_title || 'Текущие апостериорные веса гипотез'}:</b><br>
-        Cascade (Каскад): <span style="color:#58a6ff;font-family:monospace">${(ms.cascade * 100).toFixed(1)}%</span><br>
-        Hard Wall (Стена): <span style="color:#ef4444;font-family:monospace">${(ms.hard_wall * 100).toFixed(1)}%</span><br>
-        Slow Takeoff (Взлет): <span style="color:#22c55e;font-family:monospace">${(ms.slow_takeoff * 100).toFixed(1)}%</span><br>
-        Resilient (Иммунитет): <span style="color:#a855f7;font-family:monospace">${(ms.resilient_civ * 100).toFixed(1)}%</span><br>
+        ${rows || detailRows}
+        ${(idf && idf.groups && rows) ? `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:10px;opacity:0.7">${L.postPerScenario || 'per-scenario detail'}</summary><div style="font-size:10px;opacity:0.8;padding-left:4px">${detailRows}</div></details>` : ''}
         <div style="margin-top:8px;padding:6px 8px;border-left:2px solid #d29922;background:rgba(210,153,34,0.08);color:#d29922;font-size:11px">
           ${msEff === null
             ? (L.postProvisional || 'Provisional: read off the per-particle scenario label, not a fit. Press to compute the fit-weighted split (~7 s).')
             : (L.postMarginalised || 'Each particle is scored under all four scenarios and its weight split by the fit; {n} of 4 scenarios remain open.').replace('{n}', msEff.toFixed(2))}
         </div>
+        ${(idf && idf.distinguishable !== undefined) ? `<div style="margin-top:6px;padding:6px 8px;border-left:2px solid ${idf.distinguishable < idf.scenarioCount ? '#d29922' : '#22c55e'};background:${idf.distinguishable < idf.scenarioCount ? 'rgba(210,153,34,0.08)' : 'rgba(34,197,94,0.08)'};color:${idf.distinguishable < idf.scenarioCount ? '#d29922' : '#22c55e'};font-size:11px">
+          ${(L.postDistinguishable || 'The data distinguishes {k} of {n} hypotheses; the rest is prior.')
+            .replace('{k}', idf.distinguishable).replace('{n}', idf.scenarioCount)}
+        </div>` : ''}
         <button id="btnScenarioMarg" type="button" style="margin-top:8px;font-size:11px;padding:4px 8px;cursor:pointer;background:#1f2233;color:#f0883e;border:1px solid #f0883e;border-radius:4px">
           ${(msEff === null ? (L.btnScenarioCompute || 'Compute fit-weighted split') : (L.btnScenarioRecompute || 'Recompute'))}
         </button>
@@ -3056,6 +3264,10 @@ const LANG = {
     forecast_pagi:'P(T2)',
     postUnidentified:'Эти четыре числа — один случайный розыгрыш, а не измерение: апостериор по сценариям не идентифицирован, и на независимых облаках частиц каждый сценарий гуляет примерно от 1% до 97%. Считайте их неопределёнными.',
     postMarginalised:'Каждая частица оценена по всем четырём сценариям, и её вес поделён по качеству согласия с данными. Открытыми остаются {n} сценария из 4: данные различают их не полностью.',
+    postPerScenario:'подробно по каждому сценарию',
+    postTiedGroup:'сведено вместе — данные не различают эти сценарии',
+    postAssumedSplit:'Разбивка внутри — предположение, а не измерение: {s}. Разница правдоподобий между ними равна нулю при любом наборе данных, поэтому делить поровну — свойство счёта, а не вывод.',
+    postDistinguishable:'Данные различают {k} гипотез из {n}; остальное — априор, а не свидетельство.',
     postProvisional:'Предварительно: доля взята из метки сценария частицы, а не из подгонки под данные. Нажмите, чтобы посчитать долю, взвешенную по качеству согласия (около 7 с).',
     btnScenarioCompute:'Посчитать по данным',
     btnScenarioRecompute:'Пересчитать',
@@ -3434,6 +3646,10 @@ const LANG = {
     forecast_pagi:'P(T2)',
     postUnidentified:'These four figures are one random draw, not a measurement: the world-model posterior is unidentified, and across independent particle clouds each scenario swings roughly between 1% and 97%. Treat them as undetermined.',
     postMarginalised:'Each particle is scored under all four scenarios and its weight split by the fit. {n} of 4 scenarios remain open: the data does not fully tell them apart.',
+    postPerScenario:'per-scenario detail',
+    postTiedGroup:'combined — the data cannot tell these apart',
+    postAssumedSplit:'The split within is an assumption, not a measurement: {s}. Their log-likelihood gap is exactly zero on every observation, so the even division is a property of the arithmetic, not a finding.',
+    postDistinguishable:'The data distinguishes {k} of {n} hypotheses; the rest is prior, not evidence.',
     postProvisional:'Provisional: read off the per-particle scenario label, not a fit. Press to compute the fit-weighted split (~7 s).',
     btnScenarioCompute:'Compute fit-weighted split',
     btnScenarioRecompute:'Recompute',
